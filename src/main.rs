@@ -17,6 +17,7 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
+use ansi_to_tui::IntoText as _;
 use tmux::{Session, Status};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
@@ -62,7 +63,7 @@ impl App {
     fn refresh_preview(&mut self) {
         self.preview = self
             .selected_session()
-            .and_then(|s| tmux::capture_pane(&s.target, 50).ok())
+            .and_then(|s| tmux::capture_pane(&s.target).ok())
             .unwrap_or_default();
     }
 
@@ -214,13 +215,12 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .map(|s| format!(" {} ", s.target))
         .unwrap_or_else(|| " Preview ".to_string());
 
-    let preview = Paragraph::new(app.preview.as_str())
-        .block(
-            Block::default()
-                .title(preview_title)
-                .borders(Borders::ALL),
-        )
-        .style(Style::default().fg(Color::Gray));
+    let preview_text = app.preview.into_text().unwrap_or_default();
+    let preview = Paragraph::new(preview_text).block(
+        Block::default()
+            .title(preview_title)
+            .borders(Borders::ALL),
+    );
 
     frame.render_widget(preview, preview_area);
 }

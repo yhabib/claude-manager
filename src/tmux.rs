@@ -93,7 +93,7 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
                 return None;
             }
             let target = parts[0].to_string();
-            let pane_content = capture_pane(&target, 30).unwrap_or_default();
+            let pane_content = capture_pane_plain(&target).unwrap_or_default();
             let status = detect_status(&pane_content);
             Some(Session { target, status })
         })
@@ -102,9 +102,17 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
     Ok(sessions)
 }
 
-pub fn capture_pane(target: &str, lines: u16) -> Result<String> {
+fn capture_pane_plain(target: &str) -> Result<String> {
     let output = Command::new("tmux")
-        .args(["capture-pane", "-p", "-t", target, "-S", &format!("-{lines}")])
+        .args(["capture-pane", "-p", "-t", target])
+        .output()?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+pub fn capture_pane(target: &str) -> Result<String> {
+    let output = Command::new("tmux")
+        .args(["capture-pane", "-p", "-e", "-t", target])
         .output()?;
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
