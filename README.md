@@ -45,32 +45,36 @@ Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
 
 ### Keys
 
-| Key       | Action                  |
-|-----------|-------------------------|
-| `j` / `↓`       | Move down in the list          |
-| `k` / `↑`       | Move up in the list            |
-| `Enter` / `l`   | Jump to the selected session   |
-| `q`             | Quit                           |
+| Key              | Action                                      |
+|------------------|---------------------------------------------|
+| `j` / `↓`       | Move down in the list                       |
+| `k` / `↑`       | Move up in the list                         |
+| `Enter` / `l`   | Jump to the selected session                |
+| `a`             | Approve permission prompt without switching  |
+| `/`             | Filter sessions by name or directory         |
+| `Ctrl+d`        | Scroll preview down                          |
+| `Ctrl+u`        | Scroll preview up                            |
+| `q`             | Quit                                         |
+
+**Filter mode:** type to narrow the list, `Enter` to confirm, `Esc` to clear.
 
 ## What can I do right now?
 
 - See all active Claude Code sessions across your tmux panes
-- Browse the session list with `j`/`k` or arrow keys
+- Sessions grouped by tmux session name, sorted by priority
 - Preview the selected session's pane output with full color
-- Press `Enter` or `l` to jump straight into that tmux session
+- Press `Enter` or `l` to jump straight into a session
+- Press `a` to approve permission prompts without leaving the dashboard
+- Filter sessions with `/` — matches session name and working directory
+- Scroll the preview with `Ctrl+d` / `Ctrl+u`
 - See at a glance what each session is doing:
   - `●` grey — idle, waiting for your input
   - `◉` cyan — actively working
   - `⚠` yellow — needs approval (permission prompt)
+  - `*` magenta — status changed since you last looked
+- Shows the working directory for each session
+- Help bar at the bottom with available keys
 - Sessions auto-refresh every 2 seconds
-
-## Roadmap
-
-- [x] Detect tmux panes running Claude Code
-- [x] Preview pane content for selected session
-- [x] Navigate directly to a session
-- [x] Show task status per session
-- [x] Detect sessions waiting for approval
 
 ---
 
