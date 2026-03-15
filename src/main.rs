@@ -14,7 +14,8 @@ use ratatui::{
     layout::{Constraint, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    layout::Rect,
     DefaultTerminal, Frame,
 };
 
@@ -28,6 +29,7 @@ const PREVIEW_SCROLL_STEP: u16 = 10;
 enum Mode {
     Normal,
     Filter,
+    Help,
 }
 
 struct App {
@@ -218,6 +220,15 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                             app.mode = Mode::Filter;
                             app.filter_query.clear();
                         }
+                        (KeyCode::Char('?'), _) => {
+                            app.mode = Mode::Help;
+                        }
+                        _ => {}
+                    },
+                    Mode::Help => match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
+                            app.mode = Mode::Normal;
+                        }
                         _ => {}
                     },
                     Mode::Filter => match key.code {
@@ -265,7 +276,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
     let help_text = match app.mode {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
-        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · J/K scroll preview · q quit",
+        Mode::Help => "Press ? or Esc to close",
+        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · J/K scroll · ? help · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -390,4 +402,50 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .scroll((app.preview_scroll, 0));
 
     frame.render_widget(preview, preview_area);
+
+    // Help overlay
+    if matches!(app.mode, Mode::Help) {
+        let area = centered_rect(60, 70, frame.area());
+        let help_content = vec![
+            Line::from(Span::styled(" Keybindings ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(""),
+            Line::from(vec![Span::styled("  j / ↓       ", Style::default().fg(Color::Green)), Span::raw("Move down in the session list")]),
+            Line::from(vec![Span::styled("  k / ↑       ", Style::default().fg(Color::Green)), Span::raw("Move up in the session list")]),
+            Line::from(vec![Span::styled("  l / Enter   ", Style::default().fg(Color::Green)), Span::raw("Jump to the selected session")]),
+            Line::from(vec![Span::styled("  a           ", Style::default().fg(Color::Green)), Span::raw("Approve permission prompt")]),
+            Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
+            Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
+            Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),
+            Line::from(vec![Span::styled("  ?           ", Style::default().fg(Color::Green)), Span::raw("Toggle this help")]),
+            Line::from(vec![Span::styled("  q           ", Style::default().fg(Color::Green)), Span::raw("Quit")]),
+            Line::from(""),
+            Line::from(Span::styled(" Status indicators ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(""),
+            Line::from(vec![Span::styled("  ●  ", Style::default().fg(Color::DarkGray)), Span::raw("Idle — waiting for your input")]),
+            Line::from(vec![Span::styled("  ◉  ", Style::default().fg(Color::Cyan)), Span::raw("Working — actively processing")]),
+            Line::from(vec![Span::styled("  ⚠  ", Style::default().fg(Color::Yellow)), Span::raw("Needs approval — permission prompt")]),
+            Line::from(vec![Span::styled("  *  ", Style::default().fg(Color::Magenta)), Span::raw("Status changed since last viewed")]),
+        ];
+        frame.render_widget(Clear, area);
+        frame.render_widget(
+            Paragraph::new(help_content)
+                .block(Block::default().title(" Help ").borders(Borders::ALL))
+                .style(Style::default().bg(Color::Black)),
+            area,
+        );
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let [_, vert, _] = Layout::vertical([
+        Constraint::Percentage((100 - percent_y) / 2),
+        Constraint::Percentage(percent_y),
+        Constraint::Percentage((100 - percent_y) / 2),
+    ]).areas(area);
+    let [_, horiz, _] = Layout::horizontal([
+        Constraint::Percentage((100 - percent_x) / 2),
+        Constraint::Percentage(percent_x),
+        Constraint::Percentage((100 - percent_x) / 2),
+    ]).areas(vert);
+    horiz
 }
