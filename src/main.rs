@@ -17,7 +17,7 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
-use tmux::Session;
+use tmux::{Session, Status};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -180,14 +180,26 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .sessions
         .iter()
         .map(|s| {
+            let (indicator, indicator_color) = match &s.status {
+                Status::Idle => ("●", Color::DarkGray),
+                Status::Working(_) => ("◉", Color::Cyan),
+                Status::WaitingForApproval => ("⚠", Color::Yellow),
+            };
             let line = Line::from(vec![
                 Span::styled(
-                    format!(" {} ", s.label()),
+                    format!("{indicator} "),
+                    Style::default().fg(indicator_color),
+                ),
+                Span::styled(
+                    s.label().to_string(),
                     Style::default()
                         .fg(Color::Green)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(format!(" {} ", s.title)),
+                Span::styled(
+                    format!("  {}", s.status),
+                    Style::default().fg(indicator_color),
+                ),
             ]);
             ListItem::new(line)
         })

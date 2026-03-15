@@ -1,19 +1,78 @@
+use std::fmt;
 use std::process::Command;
 
 use color_eyre::Result;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Status {
+    Idle,
+    Working(String),
+    WaitingForApproval,
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Status::Idle => write!(f, "idle"),
+            Status::Working(task) => write!(f, "{task}"),
+            Status::WaitingForApproval => write!(f, "needs approval"),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Session {
     pub target: String,
     pub title: String,
     pub pid: u32,
+    pub status: Status,
 }
 
 impl Session {
     pub fn label(&self) -> &str {
-        let session_name = self.target.split(':').next().unwrap_or(&self.target);
-        session_name
+        self.target.split(':').next().unwrap_or(&self.target)
     }
+}
+
+pub fn detect_status(pane_content: &str) -> Status {
+    let lines: Vec<&str> = pane_content
+        .lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(15)
+        .collect();
+
+    // Check for permission/approval prompt
+    for line in &lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with("1. Yes") || trimmed.starts_with("❯ 1. Yes") {
+            return Status::WaitingForApproval;
+        }
+        if trimmed == "Do you want to proceed?" {
+            return Status::WaitingForApproval;
+        }
+    }
+
+    // Check for working status (spinner words like "Marinating…", "Canoodling…")
+    for line in &lines {
+        let trimmed = line.trim();
+        // Claude Code status lines: "✢ Marinating…", "✶ Canoodling… (46s · ↓ 114 tokens)"
+        if trimmed.len() > 2 && trimmed.ends_with('…') || trimmed.contains("… (") {
+            let task = trimmed
+                .chars()
+                .skip_while(|c| !c.is_alphabetic())
+                .collect::<String>();
+            if !task.is_empty() {
+                return Status::Working(task);
+            }
+        }
+        // Also match tool execution lines like "⏺ Bash(…)" or "Running…"
+        if trimmed.contains("Running…") {
+            return Status::Working("Running…".to_string());
+        }
+    }
+
+    Status::Idle
 }
 
 pub fn detect_sessions() -> Result<Vec<Session>> {
@@ -35,10 +94,14 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             if parts.len() < 3 {
                 return None;
             }
+            let target = parts[0].to_string();
+            let pane_content = capture_pane(&target, 30).unwrap_or_default();
+            let status = detect_status(&pane_content);
             Some(Session {
-                target: parts[0].to_string(),
+                target,
                 pid: parts[1].parse().unwrap_or(0),
                 title: parts[2].to_string(),
+                status,
             })
         })
         .collect();

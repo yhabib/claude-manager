@@ -25,6 +25,10 @@ cargo run
 - Browse the session list with `j`/`k` or arrow keys
 - Preview the last 50 lines of the selected session's pane output
 - Press `Enter` or `l` to jump straight into that tmux session
+- See at a glance what each session is doing:
+  - `●` grey — idle, waiting for your input
+  - `◉` cyan — actively working
+  - `⚠` yellow — needs approval (permission prompt)
 - Sessions auto-refresh every 2 seconds
 
 ## Roadmap
@@ -32,5 +36,5 @@ cargo run
 - [x] Detect tmux panes running Claude Code
 - [x] Preview pane content for selected session
 - [x] Navigate directly to a session
-- [ ] Show task summary and progress per session
-- [ ] Detect sessions waiting for input
+- [x] Show task status per session
+- [x] Detect sessions waiting for approval
