@@ -10,16 +10,23 @@ Built with [Ratatui](https://ratatui.rs/) in Rust.
 cargo run
 ```
 
-Press `q` to quit.
+### Keys
+
+| Key       | Action                  |
+|-----------|-------------------------|
+| `j` / `↓` | Move down in the list   |
+| `k` / `↑` | Move up in the list     |
+| `q`       | Quit                    |
 
 ## What can I do right now?
 
-- Launch the TUI and see a header + empty sessions panel
-- That's it so far — session detection is coming next
+- See all active Claude Code sessions across your tmux panes
+- Browse the session list with `j`/`k` or arrow keys
+- Sessions auto-refresh every 2 seconds
 
 ## Roadmap
 
-- [ ] Detect tmux panes running Claude Code
+- [x] Detect tmux panes running Claude Code
 - [ ] Show task summary and progress per session
 - [ ] Detect sessions waiting for input
 - [ ] Navigate directly to a session

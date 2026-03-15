@@ -1,4 +1,7 @@
+mod tmux;
+
 use std::io;
+use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use crossterm::{
@@ -9,10 +12,76 @@ use crossterm::{
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Color, Modifier, Style},
-    text::Line,
-    widgets::{Block, Borders, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     DefaultTerminal, Frame,
 };
+
+use tmux::Session;
+
+const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+
+struct App {
+    sessions: Vec<Session>,
+    list_state: ListState,
+    last_refresh: Instant,
+}
+
+impl App {
+    fn new() -> Result<Self> {
+        let sessions = tmux::detect_sessions().unwrap_or_default();
+        let mut list_state = ListState::default();
+        if !sessions.is_empty() {
+            list_state.select(Some(0));
+        }
+        Ok(Self {
+            sessions,
+            list_state,
+            last_refresh: Instant::now(),
+        })
+    }
+
+    fn refresh(&mut self) {
+        if self.last_refresh.elapsed() < REFRESH_INTERVAL {
+            return;
+        }
+        let selected_target = self.selected_session().map(|s| s.target.clone());
+        self.sessions = tmux::detect_sessions().unwrap_or_default();
+
+        // Preserve selection by target, or clamp to bounds
+        let new_index = selected_target
+            .and_then(|t| self.sessions.iter().position(|s| s.target == t))
+            .or(if self.sessions.is_empty() { None } else { Some(0) });
+        self.list_state.select(new_index);
+        self.last_refresh = Instant::now();
+    }
+
+    fn selected_session(&self) -> Option<&Session> {
+        self.list_state.selected().and_then(|i| self.sessions.get(i))
+    }
+
+    fn next(&mut self) {
+        if self.sessions.is_empty() {
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(i) => (i + 1) % self.sessions.len(),
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
+
+    fn previous(&mut self) {
+        if self.sessions.is_empty() {
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(0) | None => self.sessions.len() - 1,
+            Some(i) => i - 1,
+        };
+        self.list_state.select(Some(i));
+    }
+}
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -29,33 +98,79 @@ fn main() -> Result<()> {
 }
 
 fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    loop {
-        terminal.draw(ui)?;
+    let mut app = App::new()?;
 
-        if let Event::Key(key) = event::read()? {
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
-            match key.code {
-                KeyCode::Char('q') => break,
-                _ => {}
+    loop {
+        app.refresh();
+        terminal.draw(|frame| ui(frame, &mut app))?;
+
+        if event::poll(Duration::from_millis(200))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                match key.code {
+                    KeyCode::Char('q') => break,
+                    KeyCode::Char('j') | KeyCode::Down => app.next(),
+                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                    _ => {}
+                }
             }
         }
     }
     Ok(())
 }
 
-fn ui(frame: &mut Frame) {
-    let [header, body] = Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
-        .areas(frame.area());
+fn ui(frame: &mut Frame, app: &mut App) {
+    let [header, body] =
+        Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(frame.area());
 
     let title = Paragraph::new(Line::from(" Claude Manager "))
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .block(Block::default().borders(Borders::ALL));
-
-    let placeholder = Paragraph::new("No sessions detected. Press q to quit.")
-        .block(Block::default().title(" Sessions ").borders(Borders::ALL));
-
     frame.render_widget(title, header);
-    frame.render_widget(placeholder, body);
+
+    if app.sessions.is_empty() {
+        let empty = Paragraph::new("No Claude Code sessions detected.")
+            .block(Block::default().title(" Sessions ").borders(Borders::ALL));
+        frame.render_widget(empty, body);
+        return;
+    }
+
+    let items: Vec<ListItem> = app
+        .sessions
+        .iter()
+        .map(|s| {
+            let line = Line::from(vec![
+                Span::styled(
+                    format!(" {} ", s.label()),
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(format!(" {} ", s.title)),
+            ]);
+            ListItem::new(line)
+        })
+        .collect();
+
+    let count = items.len();
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .title(format!(" Sessions ({count}) "))
+                .borders(Borders::ALL),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("▸ ");
+
+    frame.render_stateful_widget(list, body, &mut app.list_state);
 }
