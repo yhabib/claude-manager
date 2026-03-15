@@ -45,6 +45,7 @@ struct App {
     changed: HashMap<String, bool>,
     prev_statuses: HashMap<String, Status>,
     show_git: bool,
+    auto_sort: bool,
 }
 
 impl App {
@@ -68,6 +69,7 @@ impl App {
             changed: HashMap::new(),
             prev_statuses: HashMap::new(),
             show_git: false,
+            auto_sort: false,
         })
     }
 
@@ -77,6 +79,9 @@ impl App {
         }
         let selected_target = self.selected_session().map(|s| s.target.clone());
         self.sessions = tmux::detect_sessions().unwrap_or_default();
+        if self.auto_sort {
+            self.sessions.sort_by(|a, b| a.status.cmp(&b.status));
+        }
 
         // Detect status changes and notify on new approval requests
         for session in &self.sessions {
@@ -224,6 +229,10 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
                         (KeyCode::Char('a'), false) => app.approve_selected(),
                         (KeyCode::Char('w'), false) => app.show_git = !app.show_git,
+                        (KeyCode::Char('s'), false) => {
+                            app.auto_sort = !app.auto_sort;
+                            app.last_refresh = Instant::now() - REFRESH_INTERVAL;
+                        }
                         (KeyCode::Char('/'), false) => {
                             app.mode = Mode::Filter;
                             app.filter_query.clear();
@@ -433,6 +442,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
             Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
             Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),
+            Line::from(vec![Span::styled("  s           ", Style::default().fg(Color::Green)), Span::raw("Toggle auto-sort by priority")]),
             Line::from(vec![Span::styled("  w           ", Style::default().fg(Color::Green)), Span::raw("Toggle git branch / worktree info")]),
             Line::from(vec![Span::styled("  ?           ", Style::default().fg(Color::Green)), Span::raw("Toggle this help")]),
             Line::from(vec![Span::styled("  q           ", Style::default().fg(Color::Green)), Span::raw("Quit")]),

@@ -162,9 +162,6 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
         })
         .collect();
 
-    let mut sessions = sessions;
-    sessions.sort_by(|a, b| a.status.cmp(&b.status));
-
     Ok(sessions)
 }
 
