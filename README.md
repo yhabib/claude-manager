@@ -25,6 +25,24 @@ To run without installing:
 cargo run
 ```
 
+**Important:** Run it inside tmux — the app uses tmux commands to detect and navigate sessions.
+
+### Recommended setup
+
+Start it in a dedicated tmux session so you can jump to it from anywhere:
+
+```sh
+tmux new-session -s claude-manager 'claude-manager'
+```
+
+Then add a keybinding to your `~/.tmux.conf` to jump back to it:
+
+```tmux
+bind m switch-client -t claude-manager
+```
+
+Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
+
 ### Keys
 
 | Key       | Action                  |
