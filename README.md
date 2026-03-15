@@ -56,7 +56,7 @@ Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
 
 - See all active Claude Code sessions across your tmux panes
 - Browse the session list with `j`/`k` or arrow keys
-- Preview the last 50 lines of the selected session's pane output
+- Preview the selected session's pane output with full color
 - Press `Enter` or `l` to jump straight into that tmux session
 - See at a glance what each session is doing:
   - `●` grey — idle, waiting for your input
