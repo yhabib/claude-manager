@@ -26,7 +26,6 @@ struct App {
     list_state: ListState,
     last_refresh: Instant,
     preview: String,
-    should_switch: Option<String>,
 }
 
 impl App {
@@ -41,7 +40,6 @@ impl App {
             list_state,
             last_refresh: Instant::now(),
             preview: String::new(),
-            should_switch: None,
         })
     }
 
@@ -96,9 +94,9 @@ impl App {
         self.refresh_preview();
     }
 
-    fn jump_to_selected(&mut self) {
+    fn jump_to_selected(&self) {
         if let Some(session) = self.selected_session() {
-            self.should_switch = Some(session.target.clone());
+            let _ = tmux::switch_to_pane(&session.target);
         }
     }
 }
@@ -114,17 +112,10 @@ fn main() -> Result<()> {
     io::stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
 
-    // Switch to the selected pane after cleaning up the terminal
-    if let Ok(ref app) = result {
-        if let Some(target) = app {
-            tmux::switch_to_pane(target)?;
-        }
-    }
-
-    result.map(|_| ())
+    result
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<Option<String>> {
+fn run(mut terminal: DefaultTerminal) -> Result<()> {
     let mut app = App::new()?;
 
     loop {
@@ -143,13 +134,10 @@ fn run(mut terminal: DefaultTerminal) -> Result<Option<String>> {
                     KeyCode::Enter | KeyCode::Char('l') => app.jump_to_selected(),
                     _ => {}
                 }
-                if app.should_switch.is_some() {
-                    break;
-                }
             }
         }
     }
-    Ok(app.should_switch)
+    Ok(())
 }
 
 fn ui(frame: &mut Frame, app: &mut App) {
