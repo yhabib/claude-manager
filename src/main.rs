@@ -200,15 +200,15 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                let shift = key.modifiers.contains(KeyModifiers::SHIFT);
                 match app.mode {
-                    Mode::Normal => match (key.code, ctrl) {
+                    Mode::Normal => match (key.code, shift) {
                         (KeyCode::Char('q'), _) => break,
+                        (KeyCode::Char('J'), true) => app.scroll_preview_down(),
+                        (KeyCode::Char('K'), true) => app.scroll_preview_up(),
                         (KeyCode::Char('j'), false) | (KeyCode::Down, false) => app.next(),
                         (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
                         (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
-                        (KeyCode::Char('d'), true) => app.scroll_preview_down(),
-                        (KeyCode::Char('u'), true) => app.scroll_preview_up(),
                         (KeyCode::Char('a'), false) => app.approve_selected(),
                         (KeyCode::Char('/'), false) => {
                             app.mode = Mode::Filter;
@@ -261,7 +261,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
     let help_text = match app.mode {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
-        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · Ctrl+d/u scroll · q quit",
+        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · J/K scroll preview · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),

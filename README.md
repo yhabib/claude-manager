@@ -52,8 +52,8 @@ Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
 | `Enter` / `l`   | Jump to the selected session                |
 | `a`             | Approve permission prompt without switching  |
 | `/`             | Filter sessions by name or directory         |
-| `Ctrl+d`        | Scroll preview down                          |
-| `Ctrl+u`        | Scroll preview up                            |
+| `J` (shift+j)   | Scroll preview down                          |
+| `K` (shift+k)   | Scroll preview up                            |
 | `q`             | Quit                                         |
 
 **Filter mode:** type to narrow the list, `Enter` to confirm, `Esc` to clear.
@@ -66,7 +66,7 @@ Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
 - Press `Enter` or `l` to jump straight into a session
 - Press `a` to approve permission prompts without leaving the dashboard
 - Filter sessions with `/` — matches session name and working directory
-- Scroll the preview with `Ctrl+d` / `Ctrl+u`
+- Scroll the preview with `J` / `K` (shift+j/k)
 - See at a glance what each session is doing:
   - `●` grey — idle, waiting for your input
   - `◉` cyan — actively working
