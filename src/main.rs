@@ -25,6 +25,8 @@ struct App {
     sessions: Vec<Session>,
     list_state: ListState,
     last_refresh: Instant,
+    preview: String,
+    should_switch: Option<String>,
 }
 
 impl App {
@@ -38,6 +40,8 @@ impl App {
             sessions,
             list_state,
             last_refresh: Instant::now(),
+            preview: String::new(),
+            should_switch: None,
         })
     }
 
@@ -53,7 +57,15 @@ impl App {
             .and_then(|t| self.sessions.iter().position(|s| s.target == t))
             .or(if self.sessions.is_empty() { None } else { Some(0) });
         self.list_state.select(new_index);
+        self.refresh_preview();
         self.last_refresh = Instant::now();
+    }
+
+    fn refresh_preview(&mut self) {
+        self.preview = self
+            .selected_session()
+            .and_then(|s| tmux::capture_pane(&s.target, 50).ok())
+            .unwrap_or_default();
     }
 
     fn selected_session(&self) -> Option<&Session> {
@@ -69,6 +81,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.refresh_preview();
     }
 
     fn previous(&mut self) {
@@ -80,6 +93,13 @@ impl App {
             Some(i) => i - 1,
         };
         self.list_state.select(Some(i));
+        self.refresh_preview();
+    }
+
+    fn jump_to_selected(&mut self) {
+        if let Some(session) = self.selected_session() {
+            self.should_switch = Some(session.target.clone());
+        }
     }
 }
 
@@ -94,10 +114,17 @@ fn main() -> Result<()> {
     io::stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
 
-    result
+    // Switch to the selected pane after cleaning up the terminal
+    if let Ok(ref app) = result {
+        if let Some(target) = app {
+            tmux::switch_to_pane(target)?;
+        }
+    }
+
+    result.map(|_| ())
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
+fn run(mut terminal: DefaultTerminal) -> Result<Option<String>> {
     let mut app = App::new()?;
 
     loop {
@@ -113,12 +140,16 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                     KeyCode::Char('q') => break,
                     KeyCode::Char('j') | KeyCode::Down => app.next(),
                     KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                    KeyCode::Enter | KeyCode::Char('l') => app.jump_to_selected(),
                     _ => {}
+                }
+                if app.should_switch.is_some() {
+                    break;
                 }
             }
         }
     }
-    Ok(())
+    Ok(app.should_switch)
 }
 
 fn ui(frame: &mut Frame, app: &mut App) {
@@ -140,6 +171,10 @@ fn ui(frame: &mut Frame, app: &mut App) {
         frame.render_widget(empty, body);
         return;
     }
+
+    let [list_area, preview_area] =
+        Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
+            .areas(body);
 
     let items: Vec<ListItem> = app
         .sessions
@@ -172,5 +207,20 @@ fn ui(frame: &mut Frame, app: &mut App) {
         )
         .highlight_symbol("▸ ");
 
-    frame.render_stateful_widget(list, body, &mut app.list_state);
+    frame.render_stateful_widget(list, list_area, &mut app.list_state);
+
+    let preview_title = app
+        .selected_session()
+        .map(|s| format!(" {} ", s.target))
+        .unwrap_or_else(|| " Preview ".to_string());
+
+    let preview = Paragraph::new(app.preview.as_str())
+        .block(
+            Block::default()
+                .title(preview_title)
+                .borders(Borders::ALL),
+        )
+        .style(Style::default().fg(Color::Gray));
+
+    frame.render_widget(preview, preview_area);
 }

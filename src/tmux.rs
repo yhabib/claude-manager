@@ -53,3 +53,24 @@ pub fn capture_pane(target: &str, lines: u16) -> Result<String> {
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
+
+pub fn switch_to_pane(target: &str) -> Result<()> {
+    let parts: Vec<&str> = target.splitn(2, ':').collect();
+    if parts.len() < 2 {
+        return Ok(());
+    }
+    let session = parts[0];
+    let window_pane = parts[1]; // e.g. "2.1"
+
+    Command::new("tmux")
+        .args(["switch-client", "-t", session])
+        .output()?;
+    Command::new("tmux")
+        .args(["select-window", "-t", &format!("{session}:{window_pane}")])
+        .output()?;
+    Command::new("tmux")
+        .args(["select-pane", "-t", target])
+        .output()?;
+
+    Ok(())
+}

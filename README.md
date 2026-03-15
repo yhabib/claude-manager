@@ -14,19 +14,23 @@ cargo run
 
 | Key       | Action                  |
 |-----------|-------------------------|
-| `j` / `↓` | Move down in the list   |
-| `k` / `↑` | Move up in the list     |
-| `q`       | Quit                    |
+| `j` / `↓`       | Move down in the list          |
+| `k` / `↑`       | Move up in the list            |
+| `Enter` / `l`   | Jump to the selected session   |
+| `q`             | Quit                           |
 
 ## What can I do right now?
 
 - See all active Claude Code sessions across your tmux panes
 - Browse the session list with `j`/`k` or arrow keys
+- Preview the last 50 lines of the selected session's pane output
+- Press `Enter` or `l` to jump straight into that tmux session
 - Sessions auto-refresh every 2 seconds
 
 ## Roadmap
 
 - [x] Detect tmux panes running Claude Code
+- [x] Preview pane content for selected session
+- [x] Navigate directly to a session
 - [ ] Show task summary and progress per session
 - [ ] Detect sessions waiting for input
-- [ ] Navigate directly to a session
