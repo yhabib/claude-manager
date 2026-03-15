@@ -46,11 +46,19 @@ impl fmt::Display for Status {
 pub struct Session {
     pub target: String,
     pub status: Status,
+    pub cwd: String,
 }
 
 impl Session {
     pub fn label(&self) -> &str {
         self.target.split(':').next().unwrap_or(&self.target)
+    }
+
+    pub fn short_cwd(&self) -> &str {
+        self.cwd
+            .rsplit('/')
+            .next()
+            .unwrap_or(&self.cwd)
     }
 }
 
@@ -101,7 +109,7 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             "list-panes",
             "-a",
             "-F",
-            "#{session_name}:#{window_index}.#{pane_index}\t#{pane_pid}\t#{pane_title}",
+            "#{session_name}:#{window_index}.#{pane_index}\t#{pane_title}\t#{pane_current_path}",
         ])
         .output()?;
 
@@ -115,9 +123,10 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
                 return None;
             }
             let target = parts[0].to_string();
+            let cwd = if parts.len() >= 3 { parts[2].to_string() } else { String::new() };
             let pane_content = capture_pane_plain(&target).unwrap_or_default();
             let status = detect_status(&pane_content);
-            Some(Session { target, status })
+            Some(Session { target, status, cwd })
         })
         .collect();
 

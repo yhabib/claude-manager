@@ -203,7 +203,11 @@ fn ui(frame: &mut Frame, app: &mut App) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    format!("  {}", s.status),
+                    format!("  {} ", s.short_cwd()),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    format!(" {}", s.status),
                     Style::default().fg(indicator_color),
                 ),
             ]);
