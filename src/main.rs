@@ -291,47 +291,51 @@ fn ui(frame: &mut Frame, app: &mut App) {
         Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
             .areas(body);
 
-    let items: Vec<ListItem> = app
-        .filtered
-        .iter()
-        .map(|&i| &app.sessions[i])
-        .map(|s| {
-            let (indicator, indicator_color) = match &s.status {
-                Status::Idle => ("●", Color::DarkGray),
-                Status::Working(_) => ("◉", Color::Cyan),
-                Status::WaitingForApproval => ("⚠", Color::Yellow),
-            };
-            let changed = app.changed.contains_key(&s.target);
-            let mut spans = vec![
-                Span::styled(
-                    format!("{indicator} "),
-                    Style::default().fg(indicator_color),
-                ),
-                Span::styled(
-                    s.label().to_string(),
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!("  {} ", s.short_cwd()),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(
-                    format!(" {}", s.status),
-                    Style::default().fg(indicator_color),
-                ),
-            ];
-            if changed {
-                spans.push(Span::styled(
-                    " *",
-                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
-                ));
-            }
-            let line = Line::from(spans);
-            ListItem::new(line)
-        })
-        .collect();
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut last_group = String::new();
+    for &i in &app.filtered {
+        let s = &app.sessions[i];
+        let (indicator, indicator_color) = match &s.status {
+            Status::Idle => ("●", Color::DarkGray),
+            Status::Working(_) => ("◉", Color::Cyan),
+            Status::WaitingForApproval => ("⚠", Color::Yellow),
+        };
+        let changed = app.changed.contains_key(&s.target);
+        let group = s.label();
+        let show_group = group != last_group;
+        if show_group {
+            last_group = group.to_string();
+        }
+        let mut lines = Vec::new();
+        if show_group {
+            lines.push(Line::from(Span::styled(
+                format!("┌ {group}"),
+                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+            )));
+        }
+        let mut spans = vec![
+            Span::styled(
+                format!("{indicator} "),
+                Style::default().fg(indicator_color),
+            ),
+            Span::styled(
+                s.short_cwd().to_string(),
+                Style::default().fg(Color::White),
+            ),
+            Span::styled(
+                format!("  {}", s.status),
+                Style::default().fg(indicator_color),
+            ),
+        ];
+        if changed {
+            spans.push(Span::styled(
+                " *",
+                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+            ));
+        }
+        lines.push(Line::from(spans));
+        items.push(ListItem::new(lines));
+    }
 
     let count = items.len();
     let list = List::new(items)
