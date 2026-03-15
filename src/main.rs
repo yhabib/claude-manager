@@ -24,27 +24,39 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
 const PREVIEW_SCROLL_STEP: u16 = 10;
 
+enum Mode {
+    Normal,
+    Filter,
+}
+
 struct App {
     sessions: Vec<Session>,
+    filtered: Vec<usize>,
     list_state: ListState,
     last_refresh: Instant,
     preview: String,
     preview_scroll: u16,
+    mode: Mode,
+    filter_query: String,
 }
 
 impl App {
     fn new() -> Result<Self> {
         let sessions = tmux::detect_sessions().unwrap_or_default();
+        let filtered: Vec<usize> = (0..sessions.len()).collect();
         let mut list_state = ListState::default();
-        if !sessions.is_empty() {
+        if !filtered.is_empty() {
             list_state.select(Some(0));
         }
         Ok(Self {
             sessions,
+            filtered,
             list_state,
             last_refresh: Instant::now(),
             preview: String::new(),
             preview_scroll: 0,
+            mode: Mode::Normal,
+            filter_query: String::new(),
         })
     }
 
@@ -54,14 +66,27 @@ impl App {
         }
         let selected_target = self.selected_session().map(|s| s.target.clone());
         self.sessions = tmux::detect_sessions().unwrap_or_default();
+        self.apply_filter();
 
         // Preserve selection by target, or clamp to bounds
         let new_index = selected_target
-            .and_then(|t| self.sessions.iter().position(|s| s.target == t))
-            .or(if self.sessions.is_empty() { None } else { Some(0) });
+            .and_then(|t| self.filtered.iter().position(|&i| self.sessions[i].target == t))
+            .or(if self.filtered.is_empty() { None } else { Some(0) });
         self.list_state.select(new_index);
         self.refresh_preview();
         self.last_refresh = Instant::now();
+    }
+
+    fn apply_filter(&mut self) {
+        let query = self.filter_query.to_lowercase();
+        self.filtered = self.sessions.iter().enumerate()
+            .filter(|(_, s)| {
+                query.is_empty()
+                    || s.label().to_lowercase().contains(&query)
+                    || s.cwd.to_lowercase().contains(&query)
+            })
+            .map(|(i, _)| i)
+            .collect();
     }
 
     fn refresh_preview(&mut self) {
@@ -82,15 +107,17 @@ impl App {
     }
 
     fn selected_session(&self) -> Option<&Session> {
-        self.list_state.selected().and_then(|i| self.sessions.get(i))
+        self.list_state.selected()
+            .and_then(|i| self.filtered.get(i))
+            .map(|&i| &self.sessions[i])
     }
 
     fn next(&mut self) {
-        if self.sessions.is_empty() {
+        if self.filtered.is_empty() {
             return;
         }
         let i = match self.list_state.selected() {
-            Some(i) => (i + 1) % self.sessions.len(),
+            Some(i) => (i + 1) % self.filtered.len(),
             None => 0,
         };
         self.list_state.select(Some(i));
@@ -98,11 +125,11 @@ impl App {
     }
 
     fn previous(&mut self) {
-        if self.sessions.is_empty() {
+        if self.filtered.is_empty() {
             return;
         }
         let i = match self.list_state.selected() {
-            Some(0) | None => self.sessions.len() - 1,
+            Some(0) | None => self.filtered.len() - 1,
             Some(i) => i - 1,
         };
         self.list_state.select(Some(i));
@@ -143,14 +170,51 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                     continue;
                 }
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-                match (key.code, ctrl) {
-                    (KeyCode::Char('q'), _) => break,
-                    (KeyCode::Char('j'), false) | (KeyCode::Down, false) => app.next(),
-                    (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
-                    (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
-                    (KeyCode::Char('d'), true) => app.scroll_preview_down(),
-                    (KeyCode::Char('u'), true) => app.scroll_preview_up(),
-                    _ => {}
+                match app.mode {
+                    Mode::Normal => match (key.code, ctrl) {
+                        (KeyCode::Char('q'), _) => break,
+                        (KeyCode::Char('j'), false) | (KeyCode::Down, false) => app.next(),
+                        (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
+                        (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
+                        (KeyCode::Char('d'), true) => app.scroll_preview_down(),
+                        (KeyCode::Char('u'), true) => app.scroll_preview_up(),
+                        (KeyCode::Char('/'), false) => {
+                            app.mode = Mode::Filter;
+                            app.filter_query.clear();
+                        }
+                        _ => {}
+                    },
+                    Mode::Filter => match key.code {
+                        KeyCode::Esc => {
+                            app.mode = Mode::Normal;
+                            app.filter_query.clear();
+                            app.apply_filter();
+                            if !app.filtered.is_empty() {
+                                app.list_state.select(Some(0));
+                            }
+                            app.refresh_preview();
+                        }
+                        KeyCode::Enter => {
+                            app.mode = Mode::Normal;
+                        }
+                        KeyCode::Backspace => {
+                            app.filter_query.pop();
+                            app.apply_filter();
+                            if !app.filtered.is_empty() {
+                                app.list_state.select(Some(0));
+                            }
+                            app.refresh_preview();
+                        }
+                        KeyCode::Char(c) => {
+                            app.filter_query.push(c);
+                            app.apply_filter();
+                            if !app.filtered.is_empty() {
+                                app.list_state.select(Some(0));
+                            }
+                            app.refresh_preview();
+                        }
+                        _ => {}
+                    },
                 }
             }
         }
@@ -178,13 +242,27 @@ fn ui(frame: &mut Frame, app: &mut App) {
         return;
     }
 
+    // Show filter bar when in filter mode or when a filter is active
+    let body = if matches!(app.mode, Mode::Filter) || !app.filter_query.is_empty() {
+        let [body, filter_area] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(body);
+        let filter_text = format!("/{}", app.filter_query);
+        let filter_bar = Paragraph::new(filter_text)
+            .style(Style::default().fg(Color::Yellow));
+        frame.render_widget(filter_bar, filter_area);
+        body
+    } else {
+        body
+    };
+
     let [list_area, preview_area] =
         Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
             .areas(body);
 
     let items: Vec<ListItem> = app
-        .sessions
+        .filtered
         .iter()
+        .map(|&i| &app.sessions[i])
         .map(|s| {
             let (indicator, indicator_color) = match &s.status {
                 Status::Idle => ("●", Color::DarkGray),
