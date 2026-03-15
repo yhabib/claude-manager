@@ -76,11 +76,16 @@ impl App {
         let selected_target = self.selected_session().map(|s| s.target.clone());
         self.sessions = tmux::detect_sessions().unwrap_or_default();
 
-        // Detect status changes
+        // Detect status changes and notify on new approval requests
         for session in &self.sessions {
             if let Some(prev) = self.prev_statuses.get(&session.target) {
                 if *prev != session.status {
                     self.changed.insert(session.target.clone(), true);
+                    if session.status == Status::WaitingForApproval {
+                        let _ = tmux::notify(&format!(
+                            "{} needs approval", session.label()
+                        ));
+                    }
                 }
             }
         }

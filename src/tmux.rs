@@ -167,6 +167,17 @@ pub fn switch_to_pane(target: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn notify(message: &str) -> Result<()> {
+    Command::new("tmux")
+        .args(["display-message", message])
+        .output()?;
+    // Also send a bell to trigger tmux activity alerts
+    Command::new("tmux")
+        .args(["run-shell", "printf '\\a'"])
+        .output()?;
+    Ok(())
+}
+
 pub fn send_keys(target: &str, keys: &str) -> Result<()> {
     Command::new("tmux")
         .args(["send-keys", "-t", target, keys, "Enter"])
