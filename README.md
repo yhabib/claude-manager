@@ -53,3 +53,7 @@ cargo run
 - [x] Navigate directly to a session
 - [x] Show task status per session
 - [x] Detect sessions waiting for approval
+
+---
+
+Built with [Claude Code](https://claude.ai/claude-code)
