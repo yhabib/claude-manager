@@ -37,6 +37,7 @@ struct App {
     last_refresh: Instant,
     preview: String,
     preview_scroll: u16,
+    preview_auto_scroll: bool,
     mode: Mode,
     filter_query: String,
     changed: HashMap<String, bool>,
@@ -58,6 +59,7 @@ impl App {
             last_refresh: Instant::now(),
             preview: String::new(),
             preview_scroll: 0,
+            preview_auto_scroll: true,
             mode: Mode::Normal,
             filter_query: String::new(),
             changed: HashMap::new(),
@@ -115,15 +117,17 @@ impl App {
             .selected_session()
             .and_then(|s| tmux::capture_pane(&s.target).ok())
             .unwrap_or_default();
-        self.preview_scroll = 0;
+        self.preview_auto_scroll = true;
     }
 
     fn scroll_preview_down(&mut self) {
+        self.preview_auto_scroll = false;
         let line_count = self.preview.lines().count() as u16;
         self.preview_scroll = self.preview_scroll.saturating_add(PREVIEW_SCROLL_STEP).min(line_count.saturating_sub(1));
     }
 
     fn scroll_preview_up(&mut self) {
+        self.preview_auto_scroll = false;
         self.preview_scroll = self.preview_scroll.saturating_sub(PREVIEW_SCROLL_STEP);
     }
 
@@ -369,6 +373,14 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .unwrap_or_else(|| " Preview ".to_string());
 
     let preview_text = app.preview.into_text().unwrap_or_default();
+
+    if app.preview_auto_scroll {
+        let line_count = preview_text.lines.len() as u16;
+        // preview_area height minus 2 for borders
+        let visible = preview_area.height.saturating_sub(2);
+        app.preview_scroll = line_count.saturating_sub(visible);
+    }
+
     let preview = Paragraph::new(preview_text)
         .block(
             Block::default()
