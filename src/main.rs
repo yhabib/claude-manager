@@ -376,16 +376,16 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
             ));
         }
+        lines.push(Line::from(spans));
         if app.show_git {
             if let Some(git) = &s.git {
                 let tag = if git.is_worktree { " [worktree]" } else { "" };
-                spans.push(Span::styled(
+                lines.push(Line::from(Span::styled(
                     format!("  {}{tag}", git.branch),
                     Style::default().fg(Color::Yellow),
-                ));
+                )));
             }
         }
-        lines.push(Line::from(spans));
         items.push(ListItem::new(lines));
     }
 
