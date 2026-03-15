@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use color_eyre::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -22,11 +22,14 @@ use tmux::{Session, Status};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
+const PREVIEW_SCROLL_STEP: u16 = 10;
+
 struct App {
     sessions: Vec<Session>,
     list_state: ListState,
     last_refresh: Instant,
     preview: String,
+    preview_scroll: u16,
 }
 
 impl App {
@@ -41,6 +44,7 @@ impl App {
             list_state,
             last_refresh: Instant::now(),
             preview: String::new(),
+            preview_scroll: 0,
         })
     }
 
@@ -65,6 +69,16 @@ impl App {
             .selected_session()
             .and_then(|s| tmux::capture_pane(&s.target).ok())
             .unwrap_or_default();
+        self.preview_scroll = 0;
+    }
+
+    fn scroll_preview_down(&mut self) {
+        let line_count = self.preview.lines().count() as u16;
+        self.preview_scroll = self.preview_scroll.saturating_add(PREVIEW_SCROLL_STEP).min(line_count.saturating_sub(1));
+    }
+
+    fn scroll_preview_up(&mut self) {
+        self.preview_scroll = self.preview_scroll.saturating_sub(PREVIEW_SCROLL_STEP);
     }
 
     fn selected_session(&self) -> Option<&Session> {
@@ -128,11 +142,14 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char('j') | KeyCode::Down => app.next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                    KeyCode::Enter | KeyCode::Char('l') => app.jump_to_selected(),
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                match (key.code, ctrl) {
+                    (KeyCode::Char('q'), _) => break,
+                    (KeyCode::Char('j'), false) | (KeyCode::Down, false) => app.next(),
+                    (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
+                    (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
+                    (KeyCode::Char('d'), true) => app.scroll_preview_down(),
+                    (KeyCode::Char('u'), true) => app.scroll_preview_up(),
                     _ => {}
                 }
             }
@@ -216,11 +233,13 @@ fn ui(frame: &mut Frame, app: &mut App) {
         .unwrap_or_else(|| " Preview ".to_string());
 
     let preview_text = app.preview.into_text().unwrap_or_default();
-    let preview = Paragraph::new(preview_text).block(
-        Block::default()
-            .title(preview_title)
-            .borders(Borders::ALL),
-    );
+    let preview = Paragraph::new(preview_text)
+        .block(
+            Block::default()
+                .title(preview_title)
+                .borders(Borders::ALL),
+        )
+        .scroll((app.preview_scroll, 0));
 
     frame.render_widget(preview, preview_area);
 }
