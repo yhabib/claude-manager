@@ -43,10 +43,17 @@ impl fmt::Display for Status {
 }
 
 #[derive(Debug, Clone)]
+pub struct GitInfo {
+    pub branch: String,
+    pub is_worktree: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Session {
     pub target: String,
     pub status: Status,
     pub cwd: String,
+    pub git: Option<GitInfo>,
 }
 
 impl Session {
@@ -60,6 +67,33 @@ impl Session {
             .next()
             .unwrap_or(&self.cwd)
     }
+}
+
+pub fn detect_git_info(cwd: &str) -> Option<GitInfo> {
+    if cwd.is_empty() {
+        return None;
+    }
+
+    let branch = Command::new("git")
+        .args(["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
+
+    let is_worktree = Command::new("git")
+        .args(["-C", cwd, "rev-parse", "--git-common-dir"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            let common = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            // If git-common-dir differs from git-dir, it's a worktree
+            common != ".git"
+        })
+        .unwrap_or(false);
+
+    Some(GitInfo { branch, is_worktree })
 }
 
 pub fn detect_status(pane_content: &str) -> Status {
@@ -123,7 +157,8 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             let cwd = if parts.len() >= 3 { parts[2].to_string() } else { String::new() };
             let pane_content = capture_pane_plain(&target).unwrap_or_default();
             let status = detect_status(&pane_content);
-            Some(Session { target, status, cwd })
+            let git = detect_git_info(&cwd);
+            Some(Session { target, status, cwd, git })
         })
         .collect();
 

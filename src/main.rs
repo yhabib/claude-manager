@@ -44,6 +44,7 @@ struct App {
     filter_query: String,
     changed: HashMap<String, bool>,
     prev_statuses: HashMap<String, Status>,
+    show_git: bool,
 }
 
 impl App {
@@ -66,6 +67,7 @@ impl App {
             filter_query: String::new(),
             changed: HashMap::new(),
             prev_statuses: HashMap::new(),
+            show_git: false,
         })
     }
 
@@ -221,6 +223,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
                         (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
                         (KeyCode::Char('a'), false) => app.approve_selected(),
+                        (KeyCode::Char('w'), false) => app.show_git = !app.show_git,
                         (KeyCode::Char('/'), false) => {
                             app.mode = Mode::Filter;
                             app.filter_query.clear();
@@ -282,7 +285,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     let help_text = match app.mode {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
         Mode::Help => "Press ? or Esc to close",
-        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · J/K scroll · ? help · q quit",
+        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · J/K scroll · w git · ? help · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -364,6 +367,15 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
             ));
         }
+        if app.show_git {
+            if let Some(git) = &s.git {
+                let tag = if git.is_worktree { " [worktree]" } else { "" };
+                spans.push(Span::styled(
+                    format!("  {}{tag}", git.branch),
+                    Style::default().fg(Color::Yellow),
+                ));
+            }
+        }
         lines.push(Line::from(spans));
         items.push(ListItem::new(lines));
     }
@@ -421,6 +433,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
             Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
             Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),
+            Line::from(vec![Span::styled("  w           ", Style::default().fg(Color::Green)), Span::raw("Toggle git branch / worktree info")]),
             Line::from(vec![Span::styled("  ?           ", Style::default().fg(Color::Green)), Span::raw("Toggle this help")]),
             Line::from(vec![Span::styled("  q           ", Style::default().fg(Color::Green)), Span::raw("Quit")]),
             Line::from(""),

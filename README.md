@@ -54,6 +54,8 @@ Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
 | `/`             | Filter sessions by name or directory         |
 | `J` (shift+j)   | Scroll preview down                          |
 | `K` (shift+k)   | Scroll preview up                            |
+| `w`             | Toggle git branch / worktree info             |
+| `?`             | Toggle full help overlay                      |
 | `q`             | Quit                                         |
 
 **Filter mode:** type to narrow the list, `Enter` to confirm, `Esc` to clear.
@@ -67,6 +69,9 @@ Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
 - Press `a` to approve permission prompts without leaving the dashboard
 - Filter sessions with `/` — matches session name and working directory
 - Scroll the preview with `J` / `K` (shift+j/k)
+- Toggle git info with `w` — shows branch name and `[worktree]` tag
+- Get notified via tmux when a session needs approval
+- Full help overlay with `?`
 - See at a glance what each session is doing:
   - `●` grey — idle, waiting for your input
   - `◉` cyan — actively working
