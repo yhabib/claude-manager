@@ -169,3 +169,10 @@ pub fn switch_to_pane(target: &str) -> Result<()> {
 
     Ok(())
 }
+
+pub fn send_keys(target: &str, keys: &str) -> Result<()> {
+    Command::new("tmux")
+        .args(["send-keys", "-t", target, keys, "Enter"])
+        .output()?;
+    Ok(())
+}

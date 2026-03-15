@@ -162,6 +162,16 @@ impl App {
             let _ = tmux::switch_to_pane(&session.target);
         }
     }
+
+    fn approve_selected(&mut self) {
+        if let Some(session) = self.selected_session() {
+            if session.status == Status::WaitingForApproval {
+                let _ = tmux::send_keys(&session.target, "1");
+                // Force a refresh on next tick
+                self.last_refresh = Instant::now() - REFRESH_INTERVAL;
+            }
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -199,6 +209,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
                         (KeyCode::Char('d'), true) => app.scroll_preview_down(),
                         (KeyCode::Char('u'), true) => app.scroll_preview_up(),
+                        (KeyCode::Char('a'), false) => app.approve_selected(),
                         (KeyCode::Char('/'), false) => {
                             app.mode = Mode::Filter;
                             app.filter_query.clear();
