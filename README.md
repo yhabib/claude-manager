@@ -4,7 +4,22 @@ A terminal dashboard for monitoring and navigating your Claude Code sessions.
 
 Built with [Ratatui](https://ratatui.rs/) in Rust.
 
-## Usage
+## Requirements
+
+- [Rust](https://rustup.rs/) (1.85+)
+- [tmux](https://github.com/tmux/tmux) running with one or more Claude Code sessions
+
+## Install
+
+```sh
+git clone https://github.com/YusefFernandez/claude-manager.git
+cd claude-manager
+cargo install --path .
+```
+
+This puts `claude-manager` in your `~/.cargo/bin/` so you can run it from anywhere.
+
+To run without installing:
 
 ```sh
 cargo run
