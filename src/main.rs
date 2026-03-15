@@ -1,5 +1,6 @@
 mod tmux;
 
+use std::collections::HashMap;
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -38,6 +39,8 @@ struct App {
     preview_scroll: u16,
     mode: Mode,
     filter_query: String,
+    changed: HashMap<String, bool>,
+    prev_statuses: HashMap<String, Status>,
 }
 
 impl App {
@@ -57,6 +60,8 @@ impl App {
             preview_scroll: 0,
             mode: Mode::Normal,
             filter_query: String::new(),
+            changed: HashMap::new(),
+            prev_statuses: HashMap::new(),
         })
     }
 
@@ -66,6 +71,19 @@ impl App {
         }
         let selected_target = self.selected_session().map(|s| s.target.clone());
         self.sessions = tmux::detect_sessions().unwrap_or_default();
+
+        // Detect status changes
+        for session in &self.sessions {
+            if let Some(prev) = self.prev_statuses.get(&session.target) {
+                if *prev != session.status {
+                    self.changed.insert(session.target.clone(), true);
+                }
+            }
+        }
+        self.prev_statuses = self.sessions.iter()
+            .map(|s| (s.target.clone(), s.status.clone()))
+            .collect();
+
         self.apply_filter();
 
         // Preserve selection by target, or clamp to bounds
@@ -90,6 +108,9 @@ impl App {
     }
 
     fn refresh_preview(&mut self) {
+        if let Some(target) = self.selected_session().map(|s| s.target.clone()) {
+            self.changed.remove(&target);
+        }
         self.preview = self
             .selected_session()
             .and_then(|s| tmux::capture_pane(&s.target).ok())
@@ -269,7 +290,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 Status::Working(_) => ("◉", Color::Cyan),
                 Status::WaitingForApproval => ("⚠", Color::Yellow),
             };
-            let line = Line::from(vec![
+            let changed = app.changed.contains_key(&s.target);
+            let mut spans = vec![
                 Span::styled(
                     format!("{indicator} "),
                     Style::default().fg(indicator_color),
@@ -288,7 +310,14 @@ fn ui(frame: &mut Frame, app: &mut App) {
                     format!(" {}", s.status),
                     Style::default().fg(indicator_color),
                 ),
-            ]);
+            ];
+            if changed {
+                spans.push(Span::styled(
+                    " *",
+                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                ));
+            }
+            let line = Line::from(spans);
             ListItem::new(line)
         })
         .collect();
