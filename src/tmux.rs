@@ -73,10 +73,7 @@ pub fn detect_status(pane_content: &str) -> Status {
     // Check for permission/approval prompt
     for line in &lines {
         let trimmed = line.trim();
-        if trimmed.starts_with("1. Yes") || trimmed.starts_with("❯ 1. Yes") {
-            return Status::WaitingForApproval;
-        }
-        if trimmed == "Do you want to proceed?" {
+        if trimmed.contains("1. Yes") || trimmed.contains("Do you want to proceed?") {
             return Status::WaitingForApproval;
         }
     }
