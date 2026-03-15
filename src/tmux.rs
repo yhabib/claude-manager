@@ -23,8 +23,6 @@ impl fmt::Display for Status {
 #[derive(Debug, Clone)]
 pub struct Session {
     pub target: String,
-    pub title: String,
-    pub pid: u32,
     pub status: Status,
 }
 
@@ -97,12 +95,7 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             let target = parts[0].to_string();
             let pane_content = capture_pane(&target, 30).unwrap_or_default();
             let status = detect_status(&pane_content);
-            Some(Session {
-                target,
-                pid: parts[1].parse().unwrap_or(0),
-                title: parts[2].to_string(),
-                status,
-            })
+            Some(Session { target, status })
         })
         .collect();
 
