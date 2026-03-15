@@ -255,8 +255,18 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
 }
 
 fn ui(frame: &mut Frame, app: &mut App) {
-    let [header, body] =
-        Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(frame.area());
+    let [header, body, help_bar] =
+        Layout::vertical([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+            .areas(frame.area());
+
+    let help_text = match app.mode {
+        Mode::Filter => "Type to filter · Enter confirm · Esc clear",
+        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · Ctrl+d/u scroll · q quit",
+    };
+    frame.render_widget(
+        Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
+        help_bar,
+    );
 
     let title = Paragraph::new(Line::from(" Claude Manager "))
         .style(
