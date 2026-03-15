@@ -3,11 +3,33 @@ use std::process::Command;
 
 use color_eyre::Result;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
     Idle,
     Working(String),
     WaitingForApproval,
+}
+
+impl Status {
+    fn priority(&self) -> u8 {
+        match self {
+            Status::WaitingForApproval => 0,
+            Status::Working(_) => 1,
+            Status::Idle => 2,
+        }
+    }
+}
+
+impl Ord for Status {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.priority().cmp(&other.priority())
+    }
+}
+
+impl PartialOrd for Status {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl fmt::Display for Status {
@@ -98,6 +120,9 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             Some(Session { target, status })
         })
         .collect();
+
+    let mut sessions = sessions;
+    sessions.sort_by(|a, b| a.status.cmp(&b.status));
 
     Ok(sessions)
 }
