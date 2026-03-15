@@ -110,20 +110,17 @@ pub fn capture_pane(target: &str, lines: u16) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Switch the current tmux client to the given target pane.
+/// target format: "session:window.pane" e.g. "0-gov:2.1"
 pub fn switch_to_pane(target: &str) -> Result<()> {
-    let parts: Vec<&str> = target.splitn(2, ':').collect();
-    if parts.len() < 2 {
-        return Ok(());
-    }
-    let session = parts[0];
-    let window_pane = parts[1]; // e.g. "2.1"
+    // tmux select-pane/select-window with the full target is enough
+    // but switch-client needs just the session name
+    let session = target.split(':').next().unwrap_or(target);
 
     Command::new("tmux")
         .args(["switch-client", "-t", session])
         .output()?;
-    Command::new("tmux")
-        .args(["select-window", "-t", &format!("{session}:{window_pane}")])
-        .output()?;
+    // select-pane with the full target selects both the window and pane
     Command::new("tmux")
         .args(["select-pane", "-t", target])
         .output()?;
