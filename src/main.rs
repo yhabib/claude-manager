@@ -302,12 +302,46 @@ fn ui(frame: &mut Frame, app: &mut App) {
         help_bar,
     );
 
-    let title = Paragraph::new(Line::from(" Claude Manager "))
-        .style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
+    // Session summary counts
+    let approval_count = app.sessions.iter().filter(|s| s.status == Status::WaitingForApproval).count();
+    let working_count = app.sessions.iter().filter(|s| matches!(s.status, Status::Working(_))).count();
+    let idle_count = app.sessions.iter().filter(|s| s.status == Status::Idle).count();
+
+    let mut title_spans = vec![
+        Span::styled(
+            format!(" {} sessions", app.sessions.len()),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if !app.sessions.is_empty() {
+        title_spans.push(Span::styled("  ", Style::default()));
+        if approval_count > 0 {
+            title_spans.push(Span::styled(format!("{approval_count} ⚠"), Style::default().fg(Color::Yellow)));
+            title_spans.push(Span::styled(" · ", Style::default().fg(Color::DarkGray)));
+        }
+        if working_count > 0 {
+            title_spans.push(Span::styled(format!("{working_count} ◉"), Style::default().fg(Color::Cyan)));
+            title_spans.push(Span::styled(" · ", Style::default().fg(Color::DarkGray)));
+        }
+        title_spans.push(Span::styled(format!("{idle_count} ●"), Style::default().fg(Color::DarkGray)));
+    }
+
+    // Active toggles
+    let mut toggles = Vec::new();
+    if app.auto_sort { toggles.push("sort"); }
+    if app.show_git { toggles.push("git"); }
+    if !toggles.is_empty() {
+        title_spans.push(Span::styled("  ", Style::default()));
+        for (i, t) in toggles.iter().enumerate() {
+            if i > 0 { title_spans.push(Span::styled(" ", Style::default())); }
+            title_spans.push(Span::styled(
+                format!("[{t}]"),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+    }
+
+    let title = Paragraph::new(Line::from(title_spans))
         .block(Block::default().borders(Borders::ALL));
     frame.render_widget(title, header);
 
