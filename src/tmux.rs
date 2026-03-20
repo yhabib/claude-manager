@@ -231,7 +231,9 @@ pub fn send_keys(target: &str, keys: &[&str]) -> Result<()> {
 pub fn select_option(target: &str, option: u8) -> Result<()> {
     for _ in 1..option {
         send_keys(target, &["Down"])?;
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
+    std::thread::sleep(std::time::Duration::from_millis(50));
     send_keys(target, &["Enter"])?;
     Ok(())
 }
