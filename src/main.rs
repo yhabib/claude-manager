@@ -181,11 +181,10 @@ impl App {
         }
     }
 
-    fn approve_selected(&mut self) {
+    fn select_option(&mut self, option: u8) {
         if let Some(session) = self.selected_session() {
             if session.status == Status::WaitingForApproval {
-                let _ = tmux::send_keys(&session.target, "1");
-                // Force a refresh on next tick
+                let _ = tmux::select_option(&session.target, option);
                 self.last_refresh = Instant::now() - REFRESH_INTERVAL;
             }
         }
@@ -227,7 +226,9 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Char('j'), false) | (KeyCode::Down, false) => app.next(),
                         (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
                         (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
-                        (KeyCode::Char('a'), false) => app.approve_selected(),
+                        (KeyCode::Char('a'), false) | (KeyCode::Char('1'), false) => app.select_option(1),
+                        (KeyCode::Char('2'), false) => app.select_option(2),
+                        (KeyCode::Char('3'), false) => app.select_option(3),
                         (KeyCode::Char('w'), false) => app.show_git = !app.show_git,
                         (KeyCode::Char('s'), false) => {
                             app.auto_sort = !app.auto_sort;
@@ -438,7 +439,9 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  j / ↓       ", Style::default().fg(Color::Green)), Span::raw("Move down in the session list")]),
             Line::from(vec![Span::styled("  k / ↑       ", Style::default().fg(Color::Green)), Span::raw("Move up in the session list")]),
             Line::from(vec![Span::styled("  l / Enter   ", Style::default().fg(Color::Green)), Span::raw("Jump to the selected session")]),
-            Line::from(vec![Span::styled("  a           ", Style::default().fg(Color::Green)), Span::raw("Approve permission prompt")]),
+            Line::from(vec![Span::styled("  a / 1       ", Style::default().fg(Color::Green)), Span::raw("Select option 1 (Yes)")]),
+            Line::from(vec![Span::styled("  2           ", Style::default().fg(Color::Green)), Span::raw("Select option 2 (Yes, don't ask again)")]),
+            Line::from(vec![Span::styled("  3           ", Style::default().fg(Color::Green)), Span::raw("Select option 3 (No)")]),
             Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
             Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
             Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),

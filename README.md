@@ -60,9 +60,13 @@ The right panel shows the selected session's pane output with full ANSI color su
 
 Press `l` or `Enter` to switch your tmux client directly to the selected session's window and pane. The dashboard stays running in its own pane so you can come back with `prefix + m`.
 
-### Quick approve
+### Quick respond
 
-Press `a` to approve a permission prompt without switching to that session. This sends the "Yes" response directly to the pane. Only works when the selected session has a `⚠` status.
+When a session has a `⚠` status (permission prompt), you can respond without switching to it:
+
+- `a` or `1` — select option 1 (Yes)
+- `2` — select option 2 (Yes, and don't ask again)
+- `3` — select option 3 (No)
 
 ### Filter
 
@@ -87,7 +91,9 @@ When a session transitions to "needs approval", the dashboard sends a `display-m
 | `j` / `↓`     | Move down                       |
 | `k` / `↑`     | Move up                         |
 | `l` / `Enter` | Jump to session                 |
-| `a`            | Approve selected                |
+| `a` / `1`      | Select option 1 (Yes)           |
+| `2`            | Select option 2 (Yes, always)   |
+| `3`            | Select option 3 (No)            |
 | `J` / `K`     | Scroll preview down / up        |
 | `/`            | Filter sessions                 |
 | `s`            | Toggle priority sorting         |

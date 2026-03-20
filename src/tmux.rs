@@ -213,9 +213,25 @@ pub fn notify(message: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn send_keys(target: &str, keys: &str) -> Result<()> {
+/// Send key sequences to a tmux pane.
+/// Each entry in `keys` is a separate argument to `send-keys`.
+pub fn send_keys(target: &str, keys: &[&str]) -> Result<()> {
     Command::new("tmux")
-        .args(["send-keys", "-t", target, keys, "Enter"])
+        .arg("send-keys")
+        .arg("-t")
+        .arg(target)
+        .args(keys)
         .output()?;
+    Ok(())
+}
+
+/// Select option N in a Claude Code selection prompt.
+/// Option 1 is already highlighted by default, so just Enter.
+/// Option 2 needs one Down, option 3 needs two Downs, etc.
+pub fn select_option(target: &str, option: u8) -> Result<()> {
+    for _ in 1..option {
+        send_keys(target, &["Down"])?;
+    }
+    send_keys(target, &["Enter"])?;
     Ok(())
 }
