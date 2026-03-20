@@ -19,68 +19,82 @@ cargo install --path .
 
 This puts `claude-manager` in your `~/.cargo/bin/` so you can run it from anywhere.
 
-To run without installing:
-
-```sh
-cargo run
-```
-
-**Important:** Run it inside tmux — the app uses tmux commands to detect and navigate sessions.
+**Important:** Run it inside tmux.
 
 ### Recommended setup
 
-Start it in a dedicated tmux session so you can jump to it from anywhere:
+Start it in a dedicated tmux session:
 
 ```sh
 tmux new-session -s claude-manager 'claude-manager'
 ```
 
-Then add a keybinding to your `~/.tmux.conf` to jump back to it:
+Then add a keybinding to your `~/.tmux.conf` to jump back to it from anywhere:
 
 ```tmux
 bind m switch-client -t claude-manager
 ```
 
-Now `prefix + m` (e.g. `Ctrl+a m`) takes you to the dashboard from any session.
+Now `Ctrl+b m` takes you to the dashboard.
 
-### Keys
+## Features
 
-| Key              | Action                                      |
-|------------------|---------------------------------------------|
-| `j` / `↓`       | Move down in the list                       |
-| `k` / `↑`       | Move up in the list                         |
-| `Enter` / `l`   | Jump to the selected session                |
-| `a`             | Approve permission prompt without switching  |
-| `/`             | Filter sessions by name or directory         |
-| `J` (shift+j)   | Scroll preview down                          |
-| `K` (shift+k)   | Scroll preview up                            |
-| `w`             | Toggle git branch / worktree info             |
-| `?`             | Toggle full help overlay                      |
-| `q`             | Quit                                         |
+### Session detection
 
-**Filter mode:** type to narrow the list, `Enter` to confirm, `Esc` to clear.
+The dashboard scans all your tmux panes and picks up any running Claude Code instance. Sessions are grouped by their tmux session name and show the working directory so you can tell them apart. Everything refreshes automatically every 2 seconds.
 
-## What can I do right now?
+### Status indicators
 
-- See all active Claude Code sessions across your tmux panes
-- Sessions grouped by tmux session name, sorted by priority
-- Preview the selected session's pane output with full color
-- Press `Enter` or `l` to jump straight into a session
-- Press `a` to approve permission prompts without leaving the dashboard
-- Filter sessions with `/` — matches session name and working directory
-- Scroll the preview with `J` / `K` (shift+j/k)
-- Toggle git info with `w` — shows branch name and `[worktree]` tag
-- Get notified via tmux when a session needs approval
-- Full help overlay with `?`
-- See at a glance what each session is doing:
-  - `●` grey — idle, waiting for your input
-  - `◉` cyan — actively working
-  - `⚠` yellow — needs approval (permission prompt)
-  - `*` magenta — status changed since you last looked
-- Shows the working directory for each session
-- Help bar at the bottom with available keys
-- Sessions auto-refresh every 2 seconds
+Each session shows a color-coded status based on its pane content:
+
+- `●` **idle** — Claude finished and is waiting for your next prompt
+- `◉` **working** — Claude is actively processing (shows the current activity like "Marinating…")
+- `⚠` **needs approval** — a permission prompt is waiting for your response
+- `*` **changed** — the status changed since you last selected this session; clears when you navigate to it
+
+### Live preview
+
+The right panel shows the selected session's pane output with full ANSI color support. It auto-scrolls to the bottom so you always see the latest output. Use `J`/`K` to scroll manually — auto-scroll resumes when you switch sessions.
+
+### Jump to session
+
+Press `l` or `Enter` to switch your tmux client directly to the selected session's window and pane. The dashboard stays running in its own pane so you can come back with `prefix + m`.
+
+### Quick approve
+
+Press `a` to approve a permission prompt without switching to that session. This sends the "Yes" response directly to the pane. Only works when the selected session has a `⚠` status.
+
+### Filter
+
+Press `/` to enter filter mode. Type to narrow the session list — it matches against session names and working directories. Press `Enter` to lock in your filter, `Esc` to clear it.
+
+### Priority sorting
+
+Press `s` to toggle automatic sorting by status priority: sessions needing approval float to the top, then working sessions, then idle ones. Off by default so sessions stay in their natural tmux order.
+
+### Git info
+
+Press `w` to toggle git branch and worktree information. When enabled, each session shows its current branch on a second line, with a `[worktree]` tag if it's a git worktree rather than the main repo. Off by default.
+
+### Notifications
+
+When a session transitions to "needs approval", the dashboard sends a `display-message` to your tmux status bar so you notice even when you're working in another pane.
+
+## Keys
+
+| Key            | Action                          |
+|----------------|---------------------------------|
+| `j` / `↓`     | Move down                       |
+| `k` / `↑`     | Move up                         |
+| `l` / `Enter` | Jump to session                 |
+| `a`            | Approve selected                |
+| `J` / `K`     | Scroll preview down / up        |
+| `/`            | Filter sessions                 |
+| `s`            | Toggle priority sorting         |
+| `w`            | Toggle git / worktree info      |
+| `?`            | Help overlay                    |
+| `q`            | Quit                            |
 
 ---
 
-Built with [Claude Code](https://claude.ai/claude-code)
+Built with Claude Code
