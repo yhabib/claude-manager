@@ -164,6 +164,7 @@ dependencies = [
  "color-eyre",
  "crossterm",
  "ratatui",
+ "serde_json",
 ]
 
 [[package]]

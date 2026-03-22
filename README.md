@@ -88,6 +88,10 @@ Press `w` to toggle git branch and worktree information. When enabled, each sess
 
 Press `g` to open [lazygit](https://github.com/jesseduffield/lazygit) in a tmux popup for the selected session's working directory. Close lazygit to return to the dashboard. Requires lazygit to be installed.
 
+### Token usage and cost
+
+The header shows aggregated input/output tokens and an estimated cost across all active sessions. The cost is an approximation based on Claude Opus 4.6 pricing ($5/MTok input, $25/MTok output). Actual costs may differ if your sessions use a different model.
+
 ### Notifications
 
 When a session transitions to "needs approval", the dashboard sends a `display-message` to your tmux status bar so you notice even when you're working in another pane.

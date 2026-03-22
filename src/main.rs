@@ -393,6 +393,22 @@ fn ui(frame: &mut Frame, app: &mut App) {
         }
     }
 
+    // Aggregated token usage and cost
+    let total_input: u64 = app.sessions.iter().map(|s| s.tokens.input).sum();
+    let total_output: u64 = app.sessions.iter().map(|s| s.tokens.output).sum();
+    let total_cost: f64 = app.sessions.iter().map(|s| s.tokens.estimated_cost()).sum();
+    if total_input > 0 || total_output > 0 {
+        title_spans.push(Span::styled("  ", Style::default()));
+        title_spans.push(Span::styled(
+            format!("↓{}k ↑{}k", total_input / 1000, total_output / 1000),
+            Style::default().fg(Color::DarkGray),
+        ));
+        title_spans.push(Span::styled(
+            format!("  ${:.2}", total_cost),
+            Style::default().fg(Color::Green),
+        ));
+    }
+
     let title = Paragraph::new(Line::from(title_spans))
         .block(Block::default().borders(Borders::ALL));
     frame.render_widget(title, header);
@@ -557,6 +573,11 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  ◉  ", Style::default().fg(Color::Cyan)), Span::raw("Working — actively processing")]),
             Line::from(vec![Span::styled("  ⚠  ", Style::default().fg(Color::Yellow)), Span::raw("Needs approval — permission prompt")]),
             Line::from(vec![Span::styled("  *  ", Style::default().fg(Color::Magenta)), Span::raw("Status changed since last viewed")]),
+            Line::from(""),
+            Line::from(Span::styled(" Cost estimate ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(""),
+            Line::from("  Based on Claude Opus 4.6 pricing."),
+            Line::from("  Actual costs may differ by model."),
         ];
         frame.render_widget(Clear, area);
         frame.render_widget(
