@@ -40,6 +40,7 @@ struct App {
     last_refresh: Instant,
     preview: String,
     preview_scroll: u16,
+    preview_pinned: bool,
     mode: Mode,
     filter_query: String,
     prompt_input: String,
@@ -64,6 +65,7 @@ impl App {
             last_refresh: Instant::now(),
             preview: String::new(),
             preview_scroll: u16::MAX,
+            preview_pinned: false,
             mode: Mode::Normal,
             filter_query: String::new(),
             prompt_input: String::new(),
@@ -136,16 +138,18 @@ impl App {
 
     fn switch_preview(&mut self) {
         self.refresh_preview();
-        // Scroll to bottom — actual visible height is applied during rendering
         self.preview_scroll = u16::MAX;
+        self.preview_pinned = false;
     }
 
     fn scroll_preview_down(&mut self) {
+        self.preview_pinned = true;
         let line_count = self.preview.lines().count() as u16;
         self.preview_scroll = self.preview_scroll.saturating_add(PREVIEW_SCROLL_STEP).min(line_count.saturating_sub(1));
     }
 
     fn scroll_preview_up(&mut self) {
+        self.preview_pinned = true;
         self.preview_scroll = self.preview_scroll.saturating_sub(PREVIEW_SCROLL_STEP);
     }
 
@@ -506,11 +510,14 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
     let preview_text = app.preview.into_text().unwrap_or_default();
 
-    // Clamp scroll to actual content
     let line_count = preview_text.lines.len() as u16;
     let visible = preview_area.height.saturating_sub(2);
     let max_scroll = line_count.saturating_sub(visible);
-    app.preview_scroll = app.preview_scroll.min(max_scroll);
+    if !app.preview_pinned {
+        app.preview_scroll = max_scroll;
+    } else {
+        app.preview_scroll = app.preview_scroll.min(max_scroll);
+    }
 
     let preview = Paragraph::new(preview_text)
         .block(

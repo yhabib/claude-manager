@@ -134,20 +134,34 @@ pub fn detect_status(pane_content: &str) -> Status {
     Status::Idle
 }
 
+fn is_claude_pane(line: &str) -> bool {
+    let parts: Vec<&str> = line.splitn(4, '\t').collect();
+    if parts.len() < 4 {
+        return false;
+    }
+    let title = parts[1];
+    let command = parts[3];
+    // Match by title containing "Claude Code" or by command being a semver-like version (e.g. "2.1.81")
+    title.contains("Claude Code")
+        || command.chars().next().is_some_and(|c| c.is_ascii_digit())
+            && command.contains('.')
+            && command.len() <= 10
+}
+
 pub fn detect_sessions() -> Result<Vec<Session>> {
     let output = Command::new("tmux")
         .args([
             "list-panes",
             "-a",
             "-F",
-            "#{session_name}:#{window_index}.#{pane_index}\t#{pane_title}\t#{pane_current_path}",
+            "#{session_name}:#{window_index}.#{pane_index}\t#{pane_title}\t#{pane_current_path}\t#{pane_current_command}",
         ])
         .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let sessions: Vec<Session> = stdout
         .lines()
-        .filter(|line| line.contains("Claude Code"))
+        .filter(|line| is_claude_pane(line))
         .filter_map(|line| {
             let parts: Vec<&str> = line.splitn(3, '\t').collect();
             if parts.len() < 3 {
