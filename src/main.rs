@@ -266,7 +266,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Char('j'), false) | (KeyCode::Down, false) => app.next(),
                         (KeyCode::Char('k'), false) | (KeyCode::Up, false) => app.previous(),
                         (KeyCode::Enter, _) | (KeyCode::Char('l'), false) => app.jump_to_selected(),
-                        (KeyCode::Char('a'), false) | (KeyCode::Char('1'), false) => app.select_option(1),
+                        (KeyCode::Char('1'), false) => app.select_option(1),
                         (KeyCode::Char('2'), false) => app.select_option(2),
                         (KeyCode::Char('3'), false) => app.select_option(3),
                         (KeyCode::Char('g'), false) => app.open_lazygit(),
@@ -362,7 +362,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
         Mode::Prompt => "Type a prompt · Enter send · Esc cancel",
         Mode::Help => "Press ? or Esc to close",
-        Mode::Normal => "j/k navigate · l/Enter jump · a approve · p prompt · g lazygit · / filter · J/K scroll · w git · ? help · q quit",
+        Mode::Normal => "j/k navigate · l/Enter jump · 1/2/3 approve · p prompt · g lazygit · / filter · J/K scroll · w git · ? help · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -575,7 +575,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  j / ↓       ", Style::default().fg(Color::Green)), Span::raw("Move down in the session list")]),
             Line::from(vec![Span::styled("  k / ↑       ", Style::default().fg(Color::Green)), Span::raw("Move up in the session list")]),
             Line::from(vec![Span::styled("  l / Enter   ", Style::default().fg(Color::Green)), Span::raw("Jump to the selected session")]),
-            Line::from(vec![Span::styled("  a / 1       ", Style::default().fg(Color::Green)), Span::raw("Select option 1 (Yes)")]),
+            Line::from(vec![Span::styled("  1           ", Style::default().fg(Color::Green)), Span::raw("Select option 1 (Yes)")]),
             Line::from(vec![Span::styled("  2           ", Style::default().fg(Color::Green)), Span::raw("Select option 2 (Yes, don't ask again)")]),
             Line::from(vec![Span::styled("  3           ", Style::default().fg(Color::Green)), Span::raw("Select option 3 (No)")]),
             Line::from(vec![Span::styled("  p           ", Style::default().fg(Color::Green)), Span::raw("Send a prompt to selected session")]),
