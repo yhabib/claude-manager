@@ -12,7 +12,7 @@ Built with [Ratatui](https://ratatui.rs/) in Rust.
 ## Install
 
 ```sh
-git clone https://github.com/YusefFernandez/claude-manager.git
+git clone https://github.com/yhabib/claude-manager.git
 cd claude-manager
 cargo install --path .
 ```
