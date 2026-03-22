@@ -181,6 +181,14 @@ impl App {
         }
     }
 
+    fn open_lazygit(&self) {
+        if let Some(session) = self.selected_session() {
+            if !session.cwd.is_empty() {
+                let _ = tmux::open_lazygit(&session.cwd);
+            }
+        }
+    }
+
     fn select_option(&mut self, option: u8) {
         if let Some(session) = self.selected_session() {
             if session.status == Status::WaitingForApproval {
@@ -229,6 +237,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Char('a'), false) | (KeyCode::Char('1'), false) => app.select_option(1),
                         (KeyCode::Char('2'), false) => app.select_option(2),
                         (KeyCode::Char('3'), false) => app.select_option(3),
+                        (KeyCode::Char('g'), false) => app.open_lazygit(),
                         (KeyCode::Char('w'), false) => app.show_git = !app.show_git,
                         (KeyCode::Char('s'), false) => {
                             app.auto_sort = !app.auto_sort;
@@ -295,7 +304,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     let help_text = match app.mode {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
         Mode::Help => "Press ? or Esc to close",
-        Mode::Normal => "j/k navigate · l/Enter jump · a approve · / filter · J/K scroll · w git · ? help · q quit",
+        Mode::Normal => "j/k navigate · l/Enter jump · a approve · g lazygit · / filter · J/K scroll · w git · ? help · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -476,6 +485,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  a / 1       ", Style::default().fg(Color::Green)), Span::raw("Select option 1 (Yes)")]),
             Line::from(vec![Span::styled("  2           ", Style::default().fg(Color::Green)), Span::raw("Select option 2 (Yes, don't ask again)")]),
             Line::from(vec![Span::styled("  3           ", Style::default().fg(Color::Green)), Span::raw("Select option 3 (No)")]),
+            Line::from(vec![Span::styled("  g           ", Style::default().fg(Color::Green)), Span::raw("Open lazygit for selected session")]),
             Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
             Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
             Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),

@@ -80,6 +80,10 @@ Press `s` to toggle automatic sorting by status priority: sessions needing appro
 
 Press `w` to toggle git branch and worktree information. When enabled, each session shows its current branch on a second line, with a `[worktree]` tag if it's a git worktree rather than the main repo. Off by default.
 
+### Lazygit integration
+
+Press `g` to open [lazygit](https://github.com/jesseduffield/lazygit) in a tmux popup for the selected session's working directory. Close lazygit to return to the dashboard. Requires lazygit to be installed.
+
 ### Notifications
 
 When a session transitions to "needs approval", the dashboard sends a `display-message` to your tmux status bar so you notice even when you're working in another pane.
@@ -94,6 +98,7 @@ When a session transitions to "needs approval", the dashboard sends a `display-m
 | `a` / `1`      | Select option 1 (Yes)           |
 | `2`            | Select option 2 (Yes, always)   |
 | `3`            | Select option 3 (No)            |
+| `g`            | Open lazygit for session         |
 | `J` / `K`     | Scroll preview down / up        |
 | `/`            | Filter sessions                 |
 | `s`            | Toggle priority sorting         |

@@ -225,6 +225,14 @@ pub fn send_keys(target: &str, keys: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Open lazygit in a tmux popup targeting the given working directory.
+pub fn open_lazygit(cwd: &str) -> Result<()> {
+    Command::new("tmux")
+        .args(["display-popup", "-d", cwd, "-w", "90%", "-h", "90%", "-E", "lazygit"])
+        .output()?;
+    Ok(())
+}
+
 /// Select option N in a Claude Code selection prompt.
 /// Option 1 is already highlighted by default, so just Enter.
 /// Option 2 needs one Down, option 3 needs two Downs, etc.
