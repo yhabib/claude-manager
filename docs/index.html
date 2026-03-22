@@ -132,14 +132,82 @@
     }
 
     .terminal-body {
-      padding: 16px;
-      overflow-x: auto;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 13px;
+      line-height: 1.7;
     }
 
-    .terminal-body pre {
-      margin: 0;
-      white-space: pre;
-      color: var(--text);
+    .terminal-headerbar {
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .terminal-panels {
+      display: grid;
+      grid-template-columns: 35% 1px 1fr;
+      min-height: 280px;
+    }
+
+    .terminal-panel {
+      padding: 12px 16px;
+    }
+
+    .terminal-divider {
+      background: var(--border);
+    }
+
+    .panel-title {
+      color: var(--text-muted);
+      font-size: 11px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+
+    .terminal-group {
+      color: #58a6ff;
+      font-weight: 700;
+      font-size: 12px;
+      margin: 10px 0 4px;
+    }
+
+    .session-row {
+      padding: 4px 8px;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .session-row.selected {
+      background: var(--accent-dim);
+      border-left: 2px solid var(--accent);
+      padding-left: 6px;
+    }
+
+    .session-status { font-weight: 600; }
+    .session-name { color: var(--text-muted); font-size: 12px; }
+    .session-branch { color: var(--text-muted); font-size: 11px; padding-left: 20px; opacity: 0.7; }
+
+    .terminal-footer {
+      padding: 6px 16px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .preview-title {
+      color: var(--text-muted);
+      font-size: 11px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+      margin-bottom: 10px;
+    }
+
+    .preview-line {
+      font-size: 12px;
+      line-height: 1.6;
     }
 
     .t-muted { color: var(--text-muted); }
@@ -201,7 +269,7 @@
     }
 
     .install-steps {
-      max-width: 600px;
+      max-width: 780px;
       margin: 0 auto;
     }
 
@@ -219,6 +287,8 @@
 
     .code-block code {
       color: var(--text);
+      white-space: pre;
+      display: block;
     }
 
     .code-block .prompt { color: var(--accent); user-select: none; }
@@ -284,11 +354,14 @@
     footer a:hover { text-decoration: underline; }
 
     /* Responsive */
-    @media (max-width: 640px) {
+    @media (max-width: 720px) {
       .hero { padding: 48px 0 40px; }
       .hero h1 { font-size: 2rem; }
       .hero p { font-size: 1.05rem; }
-      .terminal-body { font-size: 11px; }
+      .terminal-panels { grid-template-columns: 1fr; }
+      .terminal-divider { height: 1px; width: 100%; }
+      .terminal-headerbar { font-size: 11px; }
+      .terminal-panel { font-size: 12px; }
       .features h2, .install h2, .keys h2 { font-size: 1.4rem; }
     }
   </style>
@@ -302,7 +375,7 @@
       <h1><span>Claude Manager</span></h1>
       <p>A terminal dashboard for monitoring and navigating your Claude Code sessions. Built with Ratatui in Rust.</p>
       <div class="hero-actions">
-        <a href="https://github.com/YusefFernandez/claude-manager" class="btn btn-primary">
+        <a href="https://github.com/yhabib/claude-manager" class="btn btn-primary">
           <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           View on GitHub
         </a>
@@ -320,20 +393,65 @@
           <div class="terminal-title">claude-manager &mdash; tmux</div>
           <div style="width: 52px;"></div>
         </div>
-        <div class="terminal-body"><pre><span class="t-accent t-bold"> Claude Manager</span>  <span class="t-muted">3 sessions &middot; 1 working &middot; 1 needs approval  [sort: on] [git: on]</span>
+        <div class="terminal-body">
+          <!-- Header bar -->
+          <div class="terminal-headerbar">
+            <span class="t-accent t-bold"> 3 sessions</span> &nbsp;
+            <span class="t-yellow">1 &#9888;</span>
+            <span class="t-muted"> &middot; </span>
+            <span class="t-accent">1 &#9673;</span>
+            <span class="t-muted"> &middot; </span>
+            <span class="t-muted">1 &#9679;</span>
+            &nbsp;&nbsp;
+            <span class="t-accent" style="opacity: 0.7;">[git]</span>
+          </div>
 
-<span class="t-muted"> &#9472;&#9472; my-project &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;</span>  <span class="t-muted">&#9474;</span>
-<span class="t-red"> &#9888; needs approval</span>  <span class="t-muted">api-server</span>      <span class="t-muted">&#9474;</span>  <span class="t-muted">  Do you want to proceed?</span>
-   <span class="t-muted">main</span>                              <span class="t-muted">&#9474;</span>
-                                          <span class="t-muted">&#9474;</span>  <span class="t-green">  &gt; 1. Yes</span>
-<span class="t-yellow"> &#9673; Reasoning&hellip;</span>  <span class="t-muted">frontend</span>          <span class="t-muted">&#9474;</span>    <span class="t-muted">2. Yes, and don't ask again</span>
-   <span class="t-muted">feat/dashboard [worktree]</span>          <span class="t-muted">&#9474;</span>    <span class="t-muted">3. No</span>
-                                          <span class="t-muted">&#9474;</span>
-<span class="t-muted"> &#9472;&#9472; infra &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;</span>  <span class="t-muted">&#9474;</span>
-<span class="t-green"> &#9679; idle</span>  <span class="t-muted">deploy-scripts</span>            <span class="t-muted">&#9474;</span>
-   <span class="t-muted">main</span>                              <span class="t-muted">&#9474;</span>
-                                          <span class="t-muted">&#9474;</span>
-<span class="t-muted"> j/k navigate  l jump  a approve  / filter  ? help</span></pre></div>
+          <!-- Two-panel body -->
+          <div class="terminal-panels">
+            <!-- Left panel: session list -->
+            <div class="terminal-panel" style="display: flex; flex-direction: column;">
+              <div class="panel-title">Sessions (3)</div>
+
+              <div class="terminal-group">&#9484; my-project</div>
+              <div class="session-row selected">
+                <span>&#9656; <span class="t-yellow">&#9888;</span> api-server &nbsp;<span class="t-yellow">needs approval</span></span>
+              </div>
+              <div class="session-branch">&#8202; <span class="t-yellow">main</span></div>
+
+              <div class="session-row">
+                <span>&nbsp; <span class="t-accent">&#9673;</span> frontend &nbsp;<span class="t-accent">Reasoning&hellip;</span></span>
+              </div>
+              <div class="session-branch">&#8202; <span class="t-yellow">feat/dashboard [worktree]</span></div>
+
+              <div class="terminal-group">&#9484; infra</div>
+              <div class="session-row">
+                <span>&nbsp; <span class="t-muted">&#9679;</span> deploy-scripts &nbsp;<span class="t-muted">idle</span></span>
+              </div>
+              <div class="session-branch">&#8202; <span class="t-yellow">main</span></div>
+
+            </div>
+
+            <!-- Divider -->
+            <div class="terminal-divider"></div>
+
+            <!-- Right panel: preview -->
+            <div class="terminal-panel">
+              <div class="panel-title">my-project:1.0</div>
+              <div class="preview-line t-muted" style="margin-bottom: 8px;">&#10058; Read <span style="opacity: 0.6;">src/handlers/auth.rs</span></div>
+              <div class="preview-line t-muted" style="margin-bottom: 8px;">&#10058; Edit <span style="opacity: 0.6;">src/middleware/session.rs</span></div>
+              <div class="preview-line" style="margin-bottom: 16px;">I've updated the session middleware to use<br>the new token format. I'd like to run the<br>test suite to verify everything works.</div>
+              <div class="preview-line" style="margin-bottom: 6px;">Do you want to proceed?</div>
+              <div class="preview-line t-green" style="margin-bottom: 2px;">&gt; 1. Yes</div>
+              <div class="preview-line t-muted" style="margin-bottom: 2px;">&nbsp; 2. Yes, and don't ask again</div>
+              <div class="preview-line t-muted">&nbsp; 3. No</div>
+            </div>
+          </div>
+
+          <!-- Help bar (full width, bottom) -->
+          <div class="terminal-footer">
+            j/k navigate &middot; l/Enter jump &middot; a approve &middot; / filter &middot; J/K scroll &middot; w git &middot; ? help &middot; q quit
+          </div>
+        </div>
       </div>
     </section>
 
@@ -390,17 +508,17 @@
       <div class="install-steps">
         <div class="code-block">
           <code><span class="comment"># Clone and install</span>
-<span class="prompt">$</span> git clone https://github.com/YusefFernandez/claude-manager.git
+<span class="prompt">$</span> git clone https://github.com/yhabib/claude-manager.git
 <span class="prompt">$</span> cd claude-manager
 <span class="prompt">$</span> cargo install --path .</code>
         </div>
         <div class="code-block">
           <code><span class="comment"># Run in a dedicated tmux session</span>
-<span class="prompt">$</span> tmux new-session -s claude-manager 'claude-manager'</code>
+<span class="prompt">$</span> tmux new-session -s manager 'claude-manager'</code>
         </div>
         <div class="code-block">
           <code><span class="comment"># Add to ~/.tmux.conf to jump back from anywhere</span>
-bind m switch-client -t claude-manager</code>
+bind m switch-client -t manager</code>
         </div>
         <p style="color: var(--text-muted); text-align: center; margin-top: 20px; font-size: 0.9rem;">
           Requires <a href="https://rustup.rs/" style="color: var(--accent);">Rust 1.85+</a> and <a href="https://github.com/tmux/tmux" style="color: var(--accent);">tmux</a>.
@@ -427,7 +545,7 @@ bind m switch-client -t claude-manager</code>
 
   <footer>
     <div class="container">
-      Built with Claude Code &middot; <a href="https://github.com/YusefFernandez/claude-manager">GitHub</a>
+      Built by <a href="https://yusefhabib.com">Yusef Habib</a> &middot; <a href="https://github.com/yhabib/claude-manager">GitHub</a> &middot; <a href="https://x.com/yhabibf">X</a>
     </div>
   </footer>
 
