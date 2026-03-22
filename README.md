@@ -68,6 +68,10 @@ When a session has a `⚠` status (permission prompt), you can respond without s
 - `2` — select option 2 (Yes, and don't ask again)
 - `3` — select option 3 (No)
 
+### Quick prompt
+
+Press `p` to type a message and send it to the selected session without switching to it. The session must be idle (waiting for input). Press `Enter` to send, `Esc` to cancel.
+
 ### Filter
 
 Press `/` to enter filter mode. Type to narrow the session list — it matches against session names and working directories. Press `Enter` to lock in your filter, `Esc` to clear it.
@@ -98,6 +102,7 @@ When a session transitions to "needs approval", the dashboard sends a `display-m
 | `a` / `1`      | Select option 1 (Yes)           |
 | `2`            | Select option 2 (Yes, always)   |
 | `3`            | Select option 3 (No)            |
+| `p`            | Send prompt to session           |
 | `g`            | Open lazygit for session         |
 | `J` / `K`     | Scroll preview down / up        |
 | `/`            | Filter sessions                 |

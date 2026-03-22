@@ -29,6 +29,7 @@ const PREVIEW_SCROLL_STEP: u16 = 10;
 enum Mode {
     Normal,
     Filter,
+    Prompt,
     Help,
 }
 
@@ -42,6 +43,7 @@ struct App {
     preview_auto_scroll: bool,
     mode: Mode,
     filter_query: String,
+    prompt_input: String,
     changed: HashMap<String, bool>,
     prev_statuses: HashMap<String, Status>,
     show_git: bool,
@@ -66,6 +68,7 @@ impl App {
             preview_auto_scroll: true,
             mode: Mode::Normal,
             filter_query: String::new(),
+            prompt_input: String::new(),
             changed: HashMap::new(),
             prev_statuses: HashMap::new(),
             show_git: false,
@@ -189,6 +192,15 @@ impl App {
         }
     }
 
+    fn send_prompt(&mut self, text: &str) {
+        if let Some(session) = self.selected_session() {
+            if session.status == Status::Idle {
+                let _ = tmux::send_keys(&session.target, &[text, "Enter"]);
+                self.last_refresh = Instant::now() - REFRESH_INTERVAL;
+            }
+        }
+    }
+
     fn select_option(&mut self, option: u8) {
         if let Some(session) = self.selected_session() {
             if session.status == Status::WaitingForApproval {
@@ -243,6 +255,10 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                             app.auto_sort = !app.auto_sort;
                             app.last_refresh = Instant::now() - REFRESH_INTERVAL;
                         }
+                        (KeyCode::Char('p'), false) => {
+                            app.mode = Mode::Prompt;
+                            app.prompt_input.clear();
+                        }
                         (KeyCode::Char('/'), false) => {
                             app.mode = Mode::Filter;
                             app.filter_query.clear();
@@ -289,6 +305,27 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         }
                         _ => {}
                     },
+                    Mode::Prompt => match key.code {
+                        KeyCode::Esc => {
+                            app.mode = Mode::Normal;
+                            app.prompt_input.clear();
+                        }
+                        KeyCode::Enter => {
+                            let input = app.prompt_input.clone();
+                            if !input.is_empty() {
+                                app.send_prompt(&input);
+                            }
+                            app.prompt_input.clear();
+                            app.mode = Mode::Normal;
+                        }
+                        KeyCode::Backspace => {
+                            app.prompt_input.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            app.prompt_input.push(c);
+                        }
+                        _ => {}
+                    },
                 }
             }
         }
@@ -303,8 +340,9 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
     let help_text = match app.mode {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
+        Mode::Prompt => "Type a prompt · Enter send · Esc cancel",
         Mode::Help => "Press ? or Esc to close",
-        Mode::Normal => "j/k navigate · l/Enter jump · a approve · g lazygit · / filter · J/K scroll · w git · ? help · q quit",
+        Mode::Normal => "j/k navigate · l/Enter jump · a approve · p prompt · g lazygit · / filter · J/K scroll · w git · ? help · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -369,6 +407,17 @@ fn ui(frame: &mut Frame, app: &mut App) {
         let filter_bar = Paragraph::new(filter_text)
             .style(Style::default().fg(Color::Yellow));
         frame.render_widget(filter_bar, filter_area);
+        body
+    } else if matches!(app.mode, Mode::Prompt) {
+        let [body, prompt_area] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(body);
+        let target_name = app.selected_session()
+            .map(|s| s.short_cwd().to_string())
+            .unwrap_or_default();
+        let prompt_text = format!("prompt ({target_name})> {}", app.prompt_input);
+        let prompt_bar = Paragraph::new(prompt_text)
+            .style(Style::default().fg(Color::Green));
+        frame.render_widget(prompt_bar, prompt_area);
         body
     } else {
         body
@@ -485,6 +534,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  a / 1       ", Style::default().fg(Color::Green)), Span::raw("Select option 1 (Yes)")]),
             Line::from(vec![Span::styled("  2           ", Style::default().fg(Color::Green)), Span::raw("Select option 2 (Yes, don't ask again)")]),
             Line::from(vec![Span::styled("  3           ", Style::default().fg(Color::Green)), Span::raw("Select option 3 (No)")]),
+            Line::from(vec![Span::styled("  p           ", Style::default().fg(Color::Green)), Span::raw("Send a prompt to selected session")]),
             Line::from(vec![Span::styled("  g           ", Style::default().fg(Color::Green)), Span::raw("Open lazygit for selected session")]),
             Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
             Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
