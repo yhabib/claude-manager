@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Manager</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #c9a0dc;
+      --accent-dim: #c9a0dc22;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0 60px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 span {
+      color: var(--accent);
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      max-width: 560px;
+      margin: 0 auto 32px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    /* Terminal mockup */
+    .terminal-wrap {
+      padding: 0 0 80px;
+    }
+
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: #1c2128;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .terminal-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.red { background: var(--red); }
+    .terminal-dot.yellow { background: var(--yellow); }
+    .terminal-dot.green { background: var(--green); }
+
+    .terminal-title {
+      flex: 1;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .terminal-body {
+      padding: 16px;
+      overflow-x: auto;
+    }
+
+    .terminal-body pre {
+      margin: 0;
+      white-space: pre;
+      color: var(--text);
+    }
+
+    .t-muted { color: var(--text-muted); }
+    .t-accent { color: var(--accent); }
+    .t-green { color: var(--green); }
+    .t-yellow { color: var(--yellow); }
+    .t-red { color: var(--red); }
+    .t-bold { font-weight: 700; }
+    .t-dim { opacity: 0.5; }
+
+    /* Features */
+    .features {
+      padding: 0 0 80px;
+    }
+
+    .features h2 {
+      font-size: 1.75rem;
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .feature-icon {
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+    }
+
+    .feature-card h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Install */
+    .install {
+      padding: 0 0 80px;
+    }
+
+    .install h2 {
+      font-size: 1.75rem;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .install-steps {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+      position: relative;
+    }
+
+    .code-block code {
+      color: var(--text);
+    }
+
+    .code-block .prompt { color: var(--accent); user-select: none; }
+    .code-block .comment { color: var(--text-muted); }
+
+    /* Keys */
+    .keys {
+      padding: 0 0 80px;
+    }
+
+    .keys h2 {
+      font-size: 1.75rem;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .key-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .key-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    kbd {
+      display: inline-block;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .key-desc {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Footer */
+    footer {
+      padding: 40px 0;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero { padding: 48px 0 40px; }
+      .hero h1 { font-size: 2rem; }
+      .hero p { font-size: 1.05rem; }
+      .terminal-body { font-size: 11px; }
+      .features h2, .install h2, .keys h2 { font-size: 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Hero -->
+    <section class="hero">
+      <h1><span>Claude Manager</span></h1>
+      <p>A terminal dashboard for monitoring and navigating your Claude Code sessions. Built with Ratatui in Rust.</p>
+      <div class="hero-actions">
+        <a href="https://github.com/YusefFernandez/claude-manager" class="btn btn-primary">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+        <a href="#install" class="btn btn-secondary">Get Started</a>
+      </div>
+    </section>
+
+    <!-- Terminal mockup -->
+    <section class="terminal-wrap">
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+          <div class="terminal-title">claude-manager &mdash; tmux</div>
+          <div style="width: 52px;"></div>
+        </div>
+        <div class="terminal-body"><pre><span class="t-accent t-bold"> Claude Manager</span>  <span class="t-muted">3 sessions &middot; 1 working &middot; 1 needs approval  [sort: on] [git: on]</span>
+
+<span class="t-muted"> &#9472;&#9472; my-project &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;</span>  <span class="t-muted">&#9474;</span>
+<span class="t-red"> &#9888; needs approval</span>  <span class="t-muted">api-server</span>      <span class="t-muted">&#9474;</span>  <span class="t-muted">  Do you want to proceed?</span>
+   <span class="t-muted">main</span>                              <span class="t-muted">&#9474;</span>
+                                          <span class="t-muted">&#9474;</span>  <span class="t-green">  &gt; 1. Yes</span>
+<span class="t-yellow"> &#9673; Reasoning&hellip;</span>  <span class="t-muted">frontend</span>          <span class="t-muted">&#9474;</span>    <span class="t-muted">2. Yes, and don't ask again</span>
+   <span class="t-muted">feat/dashboard [worktree]</span>          <span class="t-muted">&#9474;</span>    <span class="t-muted">3. No</span>
+                                          <span class="t-muted">&#9474;</span>
+<span class="t-muted"> &#9472;&#9472; infra &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;</span>  <span class="t-muted">&#9474;</span>
+<span class="t-green"> &#9679; idle</span>  <span class="t-muted">deploy-scripts</span>            <span class="t-muted">&#9474;</span>
+   <span class="t-muted">main</span>                              <span class="t-muted">&#9474;</span>
+                                          <span class="t-muted">&#9474;</span>
+<span class="t-muted"> j/k navigate  l jump  a approve  / filter  ? help</span></pre></div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+      <h2>Features</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#128269;</div>
+          <h3>Session Detection</h3>
+          <p>Automatically scans all tmux panes and picks up running Claude Code instances. Refreshes every 2 seconds.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127912;</div>
+          <h3>Live Preview</h3>
+          <p>Full ANSI color preview of the selected session's output. Auto-scrolls to the latest content.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9888;&#65039;</div>
+          <h3>Status Indicators</h3>
+          <p>Color-coded statuses: idle, working, or needs approval. Changed sessions are marked so you never miss anything.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9889;</div>
+          <h3>Quick Respond</h3>
+          <p>Approve or deny permission prompts directly from the dashboard without switching sessions.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128640;</div>
+          <h3>Jump to Session</h3>
+          <p>Press <kbd>l</kbd> to instantly switch your tmux client to the selected session's window and pane.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128270;</div>
+          <h3>Filter &amp; Sort</h3>
+          <p>Search sessions by name or directory. Toggle priority sorting to float approval-waiting sessions to the top.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#127793;</div>
+          <h3>Git Info</h3>
+          <p>Toggle branch and worktree information per session. Quickly see which branch each Claude instance is working on.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128276;</div>
+          <h3>Notifications</h3>
+          <p>Get tmux status bar notifications when a session needs approval, even when you're in another pane.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section class="install" id="install">
+      <h2>Get Started</h2>
+      <div class="install-steps">
+        <div class="code-block">
+          <code><span class="comment"># Clone and install</span>
+<span class="prompt">$</span> git clone https://github.com/YusefFernandez/claude-manager.git
+<span class="prompt">$</span> cd claude-manager
+<span class="prompt">$</span> cargo install --path .</code>
+        </div>
+        <div class="code-block">
+          <code><span class="comment"># Run in a dedicated tmux session</span>
+<span class="prompt">$</span> tmux new-session -s claude-manager 'claude-manager'</code>
+        </div>
+        <div class="code-block">
+          <code><span class="comment"># Add to ~/.tmux.conf to jump back from anywhere</span>
+bind m switch-client -t claude-manager</code>
+        </div>
+        <p style="color: var(--text-muted); text-align: center; margin-top: 20px; font-size: 0.9rem;">
+          Requires <a href="https://rustup.rs/" style="color: var(--accent);">Rust 1.85+</a> and <a href="https://github.com/tmux/tmux" style="color: var(--accent);">tmux</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- Keys -->
+    <section class="keys">
+      <h2>Keyboard Shortcuts</h2>
+      <div class="key-grid">
+        <div class="key-row"><kbd>j</kbd> <kbd>k</kbd> <span class="key-desc">Navigate sessions</span></div>
+        <div class="key-row"><kbd>l</kbd> <span class="key-desc">Jump to session</span></div>
+        <div class="key-row"><kbd>a</kbd> <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <span class="key-desc">Respond to prompts</span></div>
+        <div class="key-row"><kbd>J</kbd> <kbd>K</kbd> <span class="key-desc">Scroll preview</span></div>
+        <div class="key-row"><kbd>/</kbd> <span class="key-desc">Filter sessions</span></div>
+        <div class="key-row"><kbd>s</kbd> <span class="key-desc">Toggle priority sort</span></div>
+        <div class="key-row"><kbd>w</kbd> <span class="key-desc">Toggle git info</span></div>
+        <div class="key-row"><kbd>?</kbd> <span class="key-desc">Help overlay</span></div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>
+    <div class="container">
+      Built with Claude Code &middot; <a href="https://github.com/YusefFernandez/claude-manager">GitHub</a>
+    </div>
+  </footer>
+
+</body>
+</html>
