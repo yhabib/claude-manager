@@ -90,7 +90,7 @@ Press `g` to open [lazygit](https://github.com/jesseduffield/lazygit) in a tmux 
 
 ### Token usage and cost
 
-The header shows aggregated input/output tokens and an estimated cost across all active sessions. The cost is an approximation based on Claude Opus 4.6 pricing ($5/MTok input, $25/MTok output). Actual costs may differ if your sessions use a different model.
+The header shows three cost tiers: **session** (active sessions combined), **today** (all usage today), and **month** (last 30 days). Costs are estimated based on Claude Opus 4.6 pricing ($5/MTok input, $25/MTok output). Actual costs may differ if your sessions use a different model.
 
 ### Notifications
 
