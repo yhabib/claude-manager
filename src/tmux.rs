@@ -175,7 +175,7 @@ fn capture_pane_plain(target: &str) -> Result<String> {
 
 pub fn capture_pane(target: &str) -> Result<String> {
     let output = Command::new("tmux")
-        .args(["capture-pane", "-p", "-e", "-t", target])
+        .args(["capture-pane", "-p", "-e", "-S", "-1000", "-t", target])
         .output()?;
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())

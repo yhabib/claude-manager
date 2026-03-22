@@ -40,7 +40,6 @@ struct App {
     last_refresh: Instant,
     preview: String,
     preview_scroll: u16,
-    preview_auto_scroll: bool,
     mode: Mode,
     filter_query: String,
     prompt_input: String,
@@ -64,8 +63,7 @@ impl App {
             list_state,
             last_refresh: Instant::now(),
             preview: String::new(),
-            preview_scroll: 0,
-            preview_auto_scroll: true,
+            preview_scroll: u16::MAX,
             mode: Mode::Normal,
             filter_query: String::new(),
             prompt_input: String::new(),
@@ -134,17 +132,20 @@ impl App {
             .selected_session()
             .and_then(|s| tmux::capture_pane(&s.target).ok())
             .unwrap_or_default();
-        self.preview_auto_scroll = true;
+    }
+
+    fn switch_preview(&mut self) {
+        self.refresh_preview();
+        // Scroll to bottom — actual visible height is applied during rendering
+        self.preview_scroll = u16::MAX;
     }
 
     fn scroll_preview_down(&mut self) {
-        self.preview_auto_scroll = false;
         let line_count = self.preview.lines().count() as u16;
         self.preview_scroll = self.preview_scroll.saturating_add(PREVIEW_SCROLL_STEP).min(line_count.saturating_sub(1));
     }
 
     fn scroll_preview_up(&mut self) {
-        self.preview_auto_scroll = false;
         self.preview_scroll = self.preview_scroll.saturating_sub(PREVIEW_SCROLL_STEP);
     }
 
@@ -163,7 +164,7 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
-        self.refresh_preview();
+        self.switch_preview();
     }
 
     fn previous(&mut self) {
@@ -175,7 +176,7 @@ impl App {
             Some(i) => i - 1,
         };
         self.list_state.select(Some(i));
-        self.refresh_preview();
+        self.switch_preview();
     }
 
     fn jump_to_selected(&self) {
@@ -282,7 +283,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                             if !app.filtered.is_empty() {
                                 app.list_state.select(Some(0));
                             }
-                            app.refresh_preview();
+                            app.switch_preview();
                         }
                         KeyCode::Enter => {
                             app.mode = Mode::Normal;
@@ -293,7 +294,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                             if !app.filtered.is_empty() {
                                 app.list_state.select(Some(0));
                             }
-                            app.refresh_preview();
+                            app.switch_preview();
                         }
                         KeyCode::Char(c) => {
                             app.filter_query.push(c);
@@ -301,7 +302,7 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                             if !app.filtered.is_empty() {
                                 app.list_state.select(Some(0));
                             }
-                            app.refresh_preview();
+                            app.switch_preview();
                         }
                         _ => {}
                     },
@@ -505,12 +506,11 @@ fn ui(frame: &mut Frame, app: &mut App) {
 
     let preview_text = app.preview.into_text().unwrap_or_default();
 
-    if app.preview_auto_scroll {
-        let line_count = preview_text.lines.len() as u16;
-        // preview_area height minus 2 for borders
-        let visible = preview_area.height.saturating_sub(2);
-        app.preview_scroll = line_count.saturating_sub(visible);
-    }
+    // Clamp scroll to actual content
+    let line_count = preview_text.lines.len() as u16;
+    let visible = preview_area.height.saturating_sub(2);
+    let max_scroll = line_count.saturating_sub(visible);
+    app.preview_scroll = app.preview_scroll.min(max_scroll);
 
     let preview = Paragraph::new(preview_text)
         .block(
