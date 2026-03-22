@@ -163,12 +163,12 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
         .lines()
         .filter(|line| is_claude_pane(line))
         .filter_map(|line| {
-            let parts: Vec<&str> = line.splitn(3, '\t').collect();
+            let parts: Vec<&str> = line.splitn(4, '\t').collect();
             if parts.len() < 3 {
                 return None;
             }
             let target = parts[0].to_string();
-            let cwd = if parts.len() >= 3 { parts[2].to_string() } else { String::new() };
+            let cwd = parts[2].to_string();
             let pane_content = capture_pane_plain(&target).unwrap_or_default();
             let status = detect_status(&pane_content);
             let git = detect_git_info(&cwd);
