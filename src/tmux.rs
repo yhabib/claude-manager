@@ -2,6 +2,7 @@ use std::fmt;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::process::Command;
+use std::time::SystemTime;
 
 use color_eyre::Result;
 
@@ -160,8 +161,8 @@ pub fn detect_status(pane_content: &str) -> Status {
 /// Read token usage from the most recently modified JSONL session file for a given cwd.
 pub fn read_token_usage(cwd: &str) -> TokenUsage {
     let home = std::env::var("HOME").unwrap_or_default();
-    // Convert cwd to Claude's project dir format: /Users/foo/bar -> -Users-foo-bar
-    let project_dir = cwd.replace('/', "-");
+    // Convert cwd to Claude's project dir format: /Users/foo.bar/baz -> -Users-foo-bar-baz
+    let project_dir: String = cwd.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
     let dir = format!("{home}/.claude/projects/{project_dir}");
 
     // Find the most recently modified .jsonl file
@@ -174,25 +175,139 @@ pub fn read_token_usage(cwd: &str) -> TokenUsage {
         Err(_) => return TokenUsage::default(),
     };
 
-    let Some(path) = jsonl_path else {
+    match jsonl_path {
+        Some(path) => read_usage_from_file(&path),
+        None => TokenUsage::default(),
+    }
+}
+
+/// Read aggregated token usage for today and this month across all projects.
+/// Uses the timestamp field inside each JSONL message for accurate date filtering.
+/// Returns (daily, monthly) totals.
+pub fn read_period_usage() -> (TokenUsage, TokenUsage) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let projects_dir = format!("{home}/.claude/projects");
+
+    let now = SystemTime::now();
+    let secs_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let secs_in_day = secs_since_epoch % 86400;
+    let today_start = now - std::time::Duration::from_secs(secs_in_day);
+    let month_start = now - std::time::Duration::from_secs(30 * 86400);
+
+    let today_str = timestamp_date_str(today_start);
+    let month_str = timestamp_date_str(month_start);
+
+    let mut daily = TokenUsage::default();
+    let mut monthly = TokenUsage::default();
+
+    let Ok(projects) = fs::read_dir(&projects_dir) else {
+        return (daily, monthly);
+    };
+
+    for project in projects.filter_map(|e| e.ok()) {
+        if !project.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let Ok(files) = fs::read_dir(project.path()) else { continue };
+        for entry in files.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "jsonl") {
+                continue;
+            }
+            // Skip files not modified since month start (quick pre-filter)
+            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+            if modified.is_some_and(|m| m < month_start) {
+                continue;
+            }
+
+            read_usage_by_period(&path, &today_str, &month_str, &mut daily, &mut monthly);
+        }
+    }
+
+    (daily, monthly)
+}
+
+/// Format a SystemTime as "YYYY-MM-DD" for string comparison with ISO timestamps.
+fn timestamp_date_str(time: SystemTime) -> String {
+    let secs = time.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs();
+    // Simple date calculation from epoch seconds
+    let days = secs / 86400;
+    let mut y = 1970i64;
+    let mut remaining = days as i64;
+    loop {
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+        if remaining < days_in_year { break; }
+        remaining -= days_in_year;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut m = 0;
+    for (i, &d) in month_days.iter().enumerate() {
+        if remaining < d as i64 { m = i + 1; break; }
+        remaining -= d as i64;
+    }
+    format!("{y:04}-{m:02}-{:02}", remaining + 1)
+}
+
+fn read_usage_by_period(
+    path: &std::path::Path,
+    today_str: &str,
+    month_str: &str,
+    daily: &mut TokenUsage,
+    monthly: &mut TokenUsage,
+) {
+    let Ok(file) = fs::File::open(path) else { return };
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let Ok(line) = line else { continue };
+        if !line.contains("\"usage\"") {
+            continue;
+        }
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        if val.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+            continue;
+        }
+        let Some(ts) = val.get("timestamp").and_then(|t| t.as_str()) else { continue };
+
+        // Compare date portion of ISO timestamp (e.g. "2026-03-22T...")
+        if ts < month_str {
+            continue;
+        }
+
+        let Some(u) = val.pointer("/message/usage") else { continue };
+        let input = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let cache_read = u.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let cache_write = u.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+
+        monthly.input += input;
+        monthly.output += output;
+        monthly.cache_read += cache_read;
+        monthly.cache_write += cache_write;
+
+        if ts >= today_str {
+            daily.input += input;
+            daily.output += output;
+            daily.cache_read += cache_read;
+            daily.cache_write += cache_write;
+        }
+    }
+}
+
+fn read_usage_from_file(path: &std::path::Path) -> TokenUsage {
+    let Ok(file) = fs::File::open(path) else {
         return TokenUsage::default();
     };
-
-    let file = match fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return TokenUsage::default(),
-    };
-
     let mut usage = TokenUsage::default();
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
         let Ok(line) = line else { continue };
-        // Quick filter before parsing JSON
         if !line.contains("\"usage\"") {
             continue;
         }
-        // Parse just enough to extract usage
         let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
         if val.get("type").and_then(|t| t.as_str()) != Some("assistant") {
             continue;

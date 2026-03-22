@@ -20,9 +20,10 @@ use ratatui::{
 };
 
 use ansi_to_tui::IntoText as _;
-use tmux::{Session, Status};
+use tmux::{Session, Status, TokenUsage};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+const COST_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 const PREVIEW_SCROLL_STEP: u16 = 10;
 
@@ -48,6 +49,9 @@ struct App {
     prev_statuses: HashMap<String, Status>,
     show_git: bool,
     auto_sort: bool,
+    daily_cost: TokenUsage,
+    monthly_cost: TokenUsage,
+    last_cost_refresh: Instant,
 }
 
 impl App {
@@ -73,6 +77,9 @@ impl App {
             prev_statuses: HashMap::new(),
             show_git: false,
             auto_sort: false,
+            daily_cost: TokenUsage::default(),
+            monthly_cost: TokenUsage::default(),
+            last_cost_refresh: Instant::now() - COST_REFRESH_INTERVAL,
         })
     }
 
@@ -102,6 +109,14 @@ impl App {
         self.prev_statuses = self.sessions.iter()
             .map(|s| (s.target.clone(), s.status.clone()))
             .collect();
+
+        // Refresh daily/monthly costs every 60s
+        if self.last_cost_refresh.elapsed() >= COST_REFRESH_INTERVAL {
+            let (daily, monthly) = tmux::read_period_usage();
+            self.daily_cost = daily;
+            self.monthly_cost = monthly;
+            self.last_cost_refresh = Instant::now();
+        }
 
         self.apply_filter();
 
@@ -393,18 +408,24 @@ fn ui(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    // Aggregated token usage and cost
-    let total_input: u64 = app.sessions.iter().map(|s| s.tokens.input).sum();
-    let total_output: u64 = app.sessions.iter().map(|s| s.tokens.output).sum();
-    let total_cost: f64 = app.sessions.iter().map(|s| s.tokens.estimated_cost()).sum();
-    if total_input > 0 || total_output > 0 {
+    // Cost breakdown: session | today | month
+    let session_cost: f64 = app.sessions.iter().map(|s| s.tokens.estimated_cost()).sum();
+    let daily_cost = app.daily_cost.estimated_cost();
+    let monthly_cost = app.monthly_cost.estimated_cost();
+    if session_cost > 0.0 || daily_cost > 0.0 {
         title_spans.push(Span::styled("  ", Style::default()));
         title_spans.push(Span::styled(
-            format!("↓{}k ↑{}k", total_input / 1000, total_output / 1000),
+            format!("session: ${:.2}", session_cost),
             Style::default().fg(Color::DarkGray),
         ));
+        title_spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
         title_spans.push(Span::styled(
-            format!("  ${:.2}", total_cost),
+            format!("today: ${:.2}", daily_cost),
+            Style::default().fg(Color::DarkGray),
+        ));
+        title_spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+        title_spans.push(Span::styled(
+            format!("month: ${:.2}", monthly_cost),
             Style::default().fg(Color::Green),
         ));
     }
