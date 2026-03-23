@@ -500,7 +500,7 @@ mod tests {
         let s = Session {
             target: "t:0.0".into(),
             status: Status::Idle,
-            cwd: "/Users/yusef/Developer/my-project".into(),
+            cwd: "/home/user/my-project".into(),
             git: None,
             tokens: TokenUsage::default(),
         };

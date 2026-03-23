@@ -610,6 +610,60 @@ fn ui(frame: &mut Frame, app: &mut App) {
     }
 }
 
+/// Extract all text content from a ratatui Buffer as a single string.
+#[cfg(test)]
+fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
+    let area = buf.area;
+    let mut result = String::new();
+    for y in area.y..area.y + area.height {
+        for x in area.x..area.x + area.width {
+            let cell = &buf[(x, y)];
+            result.push_str(cell.symbol());
+        }
+        result.push('\n');
+    }
+    result
+}
+
+#[cfg(test)]
+fn test_app(sessions: Vec<Session>) -> App {
+    let filtered: Vec<usize> = (0..sessions.len()).collect();
+    let mut list_state = ListState::default();
+    if !filtered.is_empty() {
+        list_state.select(Some(0));
+    }
+    App {
+        sessions,
+        filtered,
+        list_state,
+        last_refresh: Instant::now(),
+        preview: String::new(),
+        preview_scroll: 0,
+        preview_pinned: false,
+        mode: Mode::Normal,
+        filter_query: String::new(),
+        prompt_input: String::new(),
+        changed: HashMap::new(),
+        prev_statuses: HashMap::new(),
+        show_git: false,
+        auto_sort: false,
+        daily_cost: TokenUsage::default(),
+        monthly_cost: TokenUsage::default(),
+        last_cost_refresh: Instant::now(),
+    }
+}
+
+#[cfg(test)]
+fn make_session(target: &str, status: Status, cwd: &str) -> Session {
+    Session {
+        target: target.into(),
+        status,
+        cwd: cwd.into(),
+        git: None,
+        tokens: TokenUsage::default(),
+    }
+}
+
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let [_, vert, _] = Layout::vertical([
         Constraint::Percentage((100 - percent_y) / 2),
@@ -622,4 +676,318 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         Constraint::Percentage((100 - percent_x) / 2),
     ]).areas(vert);
     horiz
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+    use tmux::GitInfo;
+
+    fn render(app: &mut App) -> String {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| ui(frame, app)).unwrap();
+        buffer_to_string(terminal.backend().buffer())
+    }
+
+    // --- Header ---
+
+    #[test]
+    fn header_shows_session_count() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Idle, "/home/user/proj"),
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("1 sessions"));
+    }
+
+    #[test]
+    fn header_shows_status_counts() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+            make_session("b:0.0", Status::Working("Thinking…".into()), "/b"),
+            make_session("c:0.0", Status::WaitingForApproval, "/c"),
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("3 sessions"));
+        assert!(output.contains("1 ⚠"));
+        assert!(output.contains("1 ◉"));
+        assert!(output.contains("1 ●"));
+    }
+
+    #[test]
+    fn header_shows_cost_when_tokens_present() {
+        let mut app = test_app(vec![
+            Session {
+                target: "a:0.0".into(),
+                status: Status::Idle,
+                cwd: "/a".into(),
+                git: None,
+                tokens: TokenUsage {
+                    input: 1_000_000,
+                    output: 100_000,
+                    cache_read: 0,
+                    cache_write: 0,
+                },
+            },
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("session: $"));
+    }
+
+    #[test]
+    fn header_no_cost_when_no_tokens() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        let output = render(&mut app);
+        assert!(!output.contains("session: $"));
+    }
+
+    #[test]
+    fn header_shows_toggle_indicators() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        app.show_git = true;
+        app.auto_sort = true;
+        let output = render(&mut app);
+        assert!(output.contains("[git]"));
+        assert!(output.contains("[sort]"));
+    }
+
+    // --- Empty state ---
+
+    #[test]
+    fn empty_state_shows_no_sessions_message() {
+        let mut app = test_app(vec![]);
+        let output = render(&mut app);
+        assert!(output.contains("No Claude Code sessions detected"));
+    }
+
+    // --- Session list ---
+
+    #[test]
+    fn session_list_shows_cwd_and_status() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Idle, "/home/user/my-project"),
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("my-project"));
+        assert!(output.contains("idle"));
+    }
+
+    #[test]
+    fn session_list_shows_working_status() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Working("Reasoning…".into()), "/home/user/proj"),
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("Reasoning…"));
+    }
+
+    #[test]
+    fn session_list_shows_group_header() {
+        let mut app = test_app(vec![
+            make_session("my-session:0.0", Status::Idle, "/home/user/proj"),
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("┌ my-session"));
+    }
+
+    #[test]
+    fn session_list_shows_git_info_when_toggled() {
+        let mut app = test_app(vec![
+            Session {
+                target: "proj:0.0".into(),
+                status: Status::Idle,
+                cwd: "/home/user/proj".into(),
+                git: Some(GitInfo { branch: "feat/cool".into(), is_worktree: true }),
+                tokens: TokenUsage::default(),
+            },
+        ]);
+        // git off by default
+        let output = render(&mut app);
+        assert!(!output.contains("feat/cool"));
+
+        // toggle on
+        app.show_git = true;
+        let output = render(&mut app);
+        assert!(output.contains("feat/cool"));
+        assert!(output.contains("[worktree]"));
+    }
+
+    #[test]
+    fn session_list_shows_changed_marker() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Idle, "/home/user/proj"),
+        ]);
+        app.changed.insert("proj:0.0".into(), true);
+        // Select a different session or none so changed isn't cleared
+        app.list_state.select(None);
+        let output = render(&mut app);
+        assert!(output.contains("*"));
+    }
+
+    // --- Help bar ---
+
+    #[test]
+    fn help_bar_normal_mode() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        let output = render(&mut app);
+        assert!(output.contains("j/k navigate"));
+        assert!(output.contains("q quit"));
+    }
+
+    #[test]
+    fn help_bar_filter_mode() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        app.mode = Mode::Filter;
+        let output = render(&mut app);
+        assert!(output.contains("Type to filter"));
+        assert!(output.contains("Esc clear"));
+    }
+
+    #[test]
+    fn help_bar_prompt_mode() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        app.mode = Mode::Prompt;
+        let output = render(&mut app);
+        assert!(output.contains("Type a prompt"));
+        assert!(output.contains("Esc cancel"));
+    }
+
+    #[test]
+    fn help_bar_help_mode() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        app.mode = Mode::Help;
+        let output = render(&mut app);
+        assert!(output.contains("Esc to close"));
+    }
+
+    // --- Filter bar ---
+
+    #[test]
+    fn filter_bar_shows_query() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        app.mode = Mode::Filter;
+        app.filter_query = "proj".into();
+        let output = render(&mut app);
+        assert!(output.contains("/proj"));
+    }
+
+    // --- Prompt bar ---
+
+    #[test]
+    fn prompt_bar_shows_input() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/home/user/my-app"),
+        ]);
+        app.mode = Mode::Prompt;
+        app.prompt_input = "fix the bug".into();
+        let output = render(&mut app);
+        assert!(output.contains("prompt (my-app)>"));
+        assert!(output.contains("fix the bug"));
+    }
+
+    // --- Help overlay ---
+
+    #[test]
+    fn help_overlay_shows_keybindings() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+        ]);
+        app.mode = Mode::Help;
+        // Use a taller terminal so all content fits
+        let backend = TestBackend::new(120, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| ui(frame, &mut app)).unwrap();
+        let output = buffer_to_string(terminal.backend().buffer());
+        assert!(output.contains("Keybindings"));
+        assert!(output.contains("j / ↓"));
+        assert!(output.contains("Cost estimate"));
+    }
+
+    // --- Navigation state ---
+
+    #[test]
+    fn next_wraps_around() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+            make_session("b:0.0", Status::Idle, "/b"),
+        ]);
+        assert_eq!(app.list_state.selected(), Some(0));
+        app.next();
+        assert_eq!(app.list_state.selected(), Some(1));
+        app.next();
+        assert_eq!(app.list_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn previous_wraps_around() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+            make_session("b:0.0", Status::Idle, "/b"),
+        ]);
+        assert_eq!(app.list_state.selected(), Some(0));
+        app.previous();
+        assert_eq!(app.list_state.selected(), Some(1));
+    }
+
+    // --- Filter logic ---
+
+    #[test]
+    fn apply_filter_narrows_list() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Idle, "/home/user/frontend"),
+            make_session("proj:1.0", Status::Idle, "/home/user/backend"),
+        ]);
+        app.filter_query = "front".into();
+        app.apply_filter();
+        assert_eq!(app.filtered.len(), 1);
+        assert_eq!(app.sessions[app.filtered[0]].cwd, "/home/user/frontend");
+    }
+
+    #[test]
+    fn apply_filter_matches_session_label() {
+        let mut app = test_app(vec![
+            make_session("my-project:0.0", Status::Idle, "/a"),
+            make_session("other:0.0", Status::Idle, "/b"),
+        ]);
+        app.filter_query = "my-proj".into();
+        app.apply_filter();
+        assert_eq!(app.filtered.len(), 1);
+    }
+
+    #[test]
+    fn apply_filter_empty_shows_all() {
+        let mut app = test_app(vec![
+            make_session("a:0.0", Status::Idle, "/a"),
+            make_session("b:0.0", Status::Idle, "/b"),
+        ]);
+        app.filter_query = String::new();
+        app.apply_filter();
+        assert_eq!(app.filtered.len(), 2);
+    }
+
+    #[test]
+    fn apply_filter_case_insensitive() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Idle, "/home/user/MyProject"),
+        ]);
+        app.filter_query = "myproject".into();
+        app.apply_filter();
+        assert_eq!(app.filtered.len(), 1);
+    }
 }
