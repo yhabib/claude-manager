@@ -448,3 +448,216 @@ pub fn select_option(target: &str, option: u8) -> Result<()> {
     send_keys(target, &["Enter"])?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Status ordering ---
+
+    #[test]
+    fn status_priority_approval_first() {
+        assert!(Status::WaitingForApproval < Status::Working("test".into()));
+        assert!(Status::Working("test".into()) < Status::Idle);
+        assert!(Status::WaitingForApproval < Status::Idle);
+    }
+
+    #[test]
+    fn status_display() {
+        assert_eq!(Status::Idle.to_string(), "idle");
+        assert_eq!(Status::WaitingForApproval.to_string(), "needs approval");
+        assert_eq!(Status::Working("Reasoning…".into()).to_string(), "Reasoning…");
+    }
+
+    // --- Session helpers ---
+
+    #[test]
+    fn session_label_extracts_session_name() {
+        let s = Session {
+            target: "my-project:2.1".into(),
+            status: Status::Idle,
+            cwd: "/home/user/code".into(),
+            git: None,
+            tokens: TokenUsage::default(),
+        };
+        assert_eq!(s.label(), "my-project");
+    }
+
+    #[test]
+    fn session_label_no_colon() {
+        let s = Session {
+            target: "simple".into(),
+            status: Status::Idle,
+            cwd: String::new(),
+            git: None,
+            tokens: TokenUsage::default(),
+        };
+        assert_eq!(s.label(), "simple");
+    }
+
+    #[test]
+    fn short_cwd_returns_last_segment() {
+        let s = Session {
+            target: "t:0.0".into(),
+            status: Status::Idle,
+            cwd: "/Users/yusef/Developer/my-project".into(),
+            git: None,
+            tokens: TokenUsage::default(),
+        };
+        assert_eq!(s.short_cwd(), "my-project");
+    }
+
+    #[test]
+    fn short_cwd_no_slash() {
+        let s = Session {
+            target: "t:0.0".into(),
+            status: Status::Idle,
+            cwd: "just-a-name".into(),
+            git: None,
+            tokens: TokenUsage::default(),
+        };
+        assert_eq!(s.short_cwd(), "just-a-name");
+    }
+
+    // --- detect_status ---
+
+    #[test]
+    fn detect_status_idle_on_empty() {
+        assert_eq!(detect_status(""), Status::Idle);
+    }
+
+    #[test]
+    fn detect_status_idle_on_prompt() {
+        let content = "Some output\n\n❯ \n";
+        assert_eq!(detect_status(content), Status::Idle);
+    }
+
+    #[test]
+    fn detect_status_waiting_for_approval_yes() {
+        let content = "Do you want to proceed?\n\n  > 1. Yes\n    2. Yes, and don't ask again\n    3. No\n";
+        assert_eq!(detect_status(content), Status::WaitingForApproval);
+    }
+
+    #[test]
+    fn detect_status_waiting_for_approval_option_only() {
+        let content = "Some text\n  1. Yes\n  2. No\n";
+        assert_eq!(detect_status(content), Status::WaitingForApproval);
+    }
+
+    #[test]
+    fn detect_status_working_spinner() {
+        let content = "Previous output\n\n✢ Marinating…\n";
+        assert!(matches!(detect_status(content), Status::Working(t) if t == "Marinating…"));
+    }
+
+    #[test]
+    fn detect_status_working_spinner_with_tokens() {
+        let content = "Output\n✶ Canoodling… (46s · ↓ 114 tokens)\n";
+        assert!(matches!(detect_status(content), Status::Working(t) if t.starts_with("Canoodling")));
+    }
+
+    #[test]
+    fn detect_status_working_running() {
+        let content = "Some text\nRunning…\n";
+        assert_eq!(detect_status(content), Status::Working("Running…".into()));
+    }
+
+    #[test]
+    fn detect_status_approval_takes_priority_over_working() {
+        let content = "✢ Thinking…\n\n  1. Yes\n  2. No\n";
+        assert_eq!(detect_status(content), Status::WaitingForApproval);
+    }
+
+    // --- TokenUsage ---
+
+    #[test]
+    fn token_usage_cost_zero() {
+        let usage = TokenUsage::default();
+        assert_eq!(usage.estimated_cost(), 0.0);
+    }
+
+    #[test]
+    fn token_usage_cost_calculation() {
+        let usage = TokenUsage {
+            input: 1_000_000,
+            output: 1_000_000,
+            cache_read: 1_000_000,
+            cache_write: 1_000_000,
+        };
+        // $5 + $25 + $0.50 + $6.25 = $36.75
+        assert!((usage.estimated_cost() - 36.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn token_usage_cost_output_dominates() {
+        let usage = TokenUsage {
+            input: 0,
+            output: 100_000,
+            cache_read: 0,
+            cache_write: 0,
+        };
+        // 100k output * $25/MTok = $2.50
+        assert!((usage.estimated_cost() - 2.5).abs() < 0.001);
+    }
+
+    // --- is_claude_pane ---
+
+    #[test]
+    fn is_claude_pane_by_title() {
+        let line = "session:1.0\t✳ Claude Code\t/home/user/project\tzsh";
+        assert!(is_claude_pane(line));
+    }
+
+    #[test]
+    fn is_claude_pane_by_version_command() {
+        let line = "session:1.0\t✳ Understand something\t/home/user/project\t2.1.81";
+        assert!(is_claude_pane(line));
+    }
+
+    #[test]
+    fn is_claude_pane_not_matching() {
+        let line = "session:1.0\tmy terminal\t/home/user\tzsh";
+        assert!(!is_claude_pane(line));
+    }
+
+    #[test]
+    fn is_claude_pane_too_few_fields() {
+        let line = "session:1.0\ttitle only";
+        assert!(!is_claude_pane(line));
+    }
+
+    #[test]
+    fn is_claude_pane_long_command_not_version() {
+        let line = "session:1.0\ttitle\t/path\tsome-long-command-name";
+        assert!(!is_claude_pane(line));
+    }
+
+    // --- timestamp_date_str ---
+
+    #[test]
+    fn timestamp_date_str_epoch() {
+        let time = SystemTime::UNIX_EPOCH;
+        assert_eq!(timestamp_date_str(time), "1970-01-01");
+    }
+
+    #[test]
+    fn timestamp_date_str_known_date() {
+        // 2026-03-15 00:00:00 UTC = 1773532800 seconds since epoch
+        let time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1773532800);
+        assert_eq!(timestamp_date_str(time), "2026-03-15");
+    }
+
+    #[test]
+    fn timestamp_date_str_leap_year() {
+        // 2024-02-29 00:00:00 UTC = 1709164800 seconds since epoch
+        let time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1709164800);
+        assert_eq!(timestamp_date_str(time), "2024-02-29");
+    }
+
+    #[test]
+    fn timestamp_date_str_end_of_year() {
+        // 2025-12-31 00:00:00 UTC = 1767139200 seconds since epoch
+        let time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1767139200);
+        assert_eq!(timestamp_date_str(time), "2025-12-31");
+    }
+}
