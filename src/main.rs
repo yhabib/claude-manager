@@ -990,4 +990,60 @@ mod tests {
         app.apply_filter();
         assert_eq!(app.filtered.len(), 1);
     }
+
+    // --- Approve (select_option) guard logic ---
+
+    #[test]
+    fn select_option_does_nothing_on_idle_session() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Idle, "/a"),
+        ]);
+        let before = app.last_refresh;
+        app.select_option(1);
+        // last_refresh should NOT be reset since session is idle
+        assert_eq!(app.last_refresh, before);
+    }
+
+    #[test]
+    fn select_option_does_nothing_on_working_session() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Working("Thinking…".into()), "/a"),
+        ]);
+        let before = app.last_refresh;
+        app.select_option(1);
+        assert_eq!(app.last_refresh, before);
+    }
+
+    #[test]
+    fn select_option_does_nothing_when_no_selection() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::WaitingForApproval, "/a"),
+        ]);
+        app.list_state.select(None);
+        let before = app.last_refresh;
+        app.select_option(1);
+        assert_eq!(app.last_refresh, before);
+    }
+
+    // --- Send prompt guard logic ---
+
+    #[test]
+    fn send_prompt_does_nothing_on_working_session() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::Working("Thinking…".into()), "/a"),
+        ]);
+        let before = app.last_refresh;
+        app.send_prompt("do something");
+        assert_eq!(app.last_refresh, before);
+    }
+
+    #[test]
+    fn send_prompt_does_nothing_on_approval_session() {
+        let mut app = test_app(vec![
+            make_session("proj:0.0", Status::WaitingForApproval, "/a"),
+        ]);
+        let before = app.last_refresh;
+        app.send_prompt("do something");
+        assert_eq!(app.last_refresh, before);
+    }
 }
