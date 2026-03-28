@@ -331,6 +331,7 @@ fn is_claude_pane(line: &str) -> bool {
     let command = parts[3];
     // Match by title containing "Claude Code" or by command being a semver-like version (e.g. "2.1.81")
     title.contains("Claude Code")
+        || command == "claude"
         || command.chars().next().is_some_and(|c| c.is_ascii_digit())
             && command.contains('.')
             && command.len() <= 10
@@ -611,6 +612,12 @@ mod tests {
     #[test]
     fn is_claude_pane_by_version_command() {
         let line = "session:1.0\t✳ Understand something\t/home/user/project\t2.1.81";
+        assert!(is_claude_pane(line));
+    }
+
+    #[test]
+    fn is_claude_pane_by_claude_command() {
+        let line = "blog:1.1\t✳ Fix blog landing page\t/root/blog\tclaude";
         assert!(is_claude_pane(line));
     }
 
