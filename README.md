@@ -50,6 +50,7 @@ Each session shows a color-coded status based on its pane content:
 - `●` **idle** — Claude finished and is waiting for your next prompt
 - `◉` **working** — Claude is actively processing (shows the current activity like "Marinating…")
 - `⚠` **needs approval** — a permission prompt is waiting for your response
+- `○` **pinned** — a manually added tmux session (not a Claude Code instance)
 - `*` **changed** — the status changed since you last selected this session; clears when you navigate to it
 
 ### Live preview
@@ -84,6 +85,10 @@ Press `s` to toggle automatic sorting by status priority: sessions needing appro
 
 Press `w` to toggle git branch and worktree information. When enabled, each session shows its current branch on a second line, with a `[worktree]` tag if it's a git worktree rather than the main repo. Off by default.
 
+### Pinned sessions
+
+Want to keep an eye on a dev server, test runner, or build process alongside your Claude sessions? Press `a` to pin any tmux pane to the dashboard — it will appear in the session list with a `○` indicator. Press `d` to unpin. Pinned sessions persist across restarts.
+
 ### Lazygit integration
 
 Press `g` to open [lazygit](https://github.com/jesseduffield/lazygit) in a tmux popup for the selected session's working directory. Close lazygit to return to the dashboard. Requires lazygit to be installed.
@@ -108,6 +113,8 @@ When a session transitions to "needs approval", the dashboard sends a `display-m
 | `3`            | Select option 3 (No)            |
 | `p`            | Send prompt to session           |
 | `g`            | Open lazygit for session         |
+| `a`            | Pin a tmux pane to dashboard     |
+| `d`            | Unpin selected session           |
 | `J` / `K`     | Scroll preview down / up        |
 | `/`            | Filter sessions                 |
 | `s`            | Toggle priority sorting         |
