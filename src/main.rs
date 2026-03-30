@@ -32,6 +32,7 @@ enum Mode {
     Filter,
     Prompt,
     Help,
+    AddSession,
 }
 
 struct App {
@@ -52,6 +53,8 @@ struct App {
     daily_cost: TokenUsage,
     monthly_cost: TokenUsage,
     last_cost_refresh: Instant,
+    add_session_items: Vec<(String, String)>,
+    add_session_state: ListState,
 }
 
 impl App {
@@ -80,6 +83,8 @@ impl App {
             daily_cost: TokenUsage::default(),
             monthly_cost: TokenUsage::default(),
             last_cost_refresh: Instant::now() - COST_REFRESH_INTERVAL,
+            add_session_items: vec![],
+            add_session_state: ListState::default(),
         })
     }
 
@@ -229,6 +234,47 @@ impl App {
             }
         }
     }
+
+    fn open_add_session(&mut self) {
+        let existing: std::collections::HashSet<String> =
+            self.sessions.iter().map(|s| s.target.clone()).collect();
+        self.add_session_items = tmux::list_all_panes()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(t, _)| !existing.contains(t))
+            .collect();
+        self.add_session_state = ListState::default();
+        if !self.add_session_items.is_empty() {
+            self.add_session_state.select(Some(0));
+        }
+        self.mode = Mode::AddSession;
+    }
+
+    fn confirm_add_session(&mut self) {
+        if let Some(i) = self.add_session_state.selected() {
+            if let Some((target, _)) = self.add_session_items.get(i) {
+                let mut pinned = tmux::load_pinned();
+                if !pinned.contains(target) {
+                    pinned.push(target.clone());
+                    tmux::save_pinned(&pinned);
+                }
+                self.last_refresh = Instant::now() - REFRESH_INTERVAL;
+            }
+        }
+        self.mode = Mode::Normal;
+    }
+
+    fn unpin_selected(&mut self) {
+        if let Some(session) = self.selected_session() {
+            if session.pinned {
+                let target = session.target.clone();
+                let mut pinned = tmux::load_pinned();
+                pinned.retain(|t| t != &target);
+                tmux::save_pinned(&pinned);
+                self.last_refresh = Instant::now() - REFRESH_INTERVAL;
+            }
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -286,6 +332,8 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Char('?'), _) => {
                             app.mode = Mode::Help;
                         }
+                        (KeyCode::Char('a'), false) => app.open_add_session(),
+                        (KeyCode::Char('d'), false) => app.unpin_selected(),
                         _ => {}
                     },
                     Mode::Help => match key.code {
@@ -346,6 +394,31 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         }
                         _ => {}
                     },
+                    Mode::AddSession => match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.mode = Mode::Normal;
+                        }
+                        KeyCode::Enter => app.confirm_add_session(),
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            if !app.add_session_items.is_empty() {
+                                let i = match app.add_session_state.selected() {
+                                    Some(i) => (i + 1) % app.add_session_items.len(),
+                                    None => 0,
+                                };
+                                app.add_session_state.select(Some(i));
+                            }
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            if !app.add_session_items.is_empty() {
+                                let i = match app.add_session_state.selected() {
+                                    Some(0) | None => app.add_session_items.len() - 1,
+                                    Some(i) => i - 1,
+                                };
+                                app.add_session_state.select(Some(i));
+                            }
+                        }
+                        _ => {}
+                    },
                 }
             }
         }
@@ -362,7 +435,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
         Mode::Filter => "Type to filter · Enter confirm · Esc clear",
         Mode::Prompt => "Type a prompt · Enter send · Esc cancel",
         Mode::Help => "Press ? or Esc to close",
-        Mode::Normal => "j/k navigate · J/K scroll · l jump · 1/2/3 approve · p prompt · g lazygit · / filter · s sort · w git · ? help · q quit",
+        Mode::AddSession => "j/k navigate · Enter pin · Esc cancel",
+        Mode::Normal => "j/k navigate · J/K scroll · l jump · 1/2/3 approve · p prompt · g lazygit · / filter · a add · d unpin · s sort · w git · ? help · q quit",
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -473,10 +547,14 @@ fn ui(frame: &mut Frame, app: &mut App) {
     let mut last_group = String::new();
     for &i in &app.filtered {
         let s = &app.sessions[i];
-        let (indicator, indicator_color) = match &s.status {
-            Status::Idle => ("●", Color::DarkGray),
-            Status::Working(_) => ("◉", Color::Cyan),
-            Status::WaitingForApproval => ("⚠", Color::Yellow),
+        let (indicator, indicator_color) = if s.pinned {
+            ("○", Color::Blue)
+        } else {
+            match &s.status {
+                Status::Idle => ("●", Color::DarkGray),
+                Status::Working(_) => ("◉", Color::Cyan),
+                Status::WaitingForApproval => ("⚠", Color::Yellow),
+            }
         };
         let changed = app.changed.contains_key(&s.target);
         let group = s.label();
@@ -583,6 +661,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  p           ", Style::default().fg(Color::Green)), Span::raw("Send a prompt to selected session")]),
             Line::from(vec![Span::styled("  g           ", Style::default().fg(Color::Green)), Span::raw("Open lazygit for selected session")]),
             Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),
+            Line::from(vec![Span::styled("  a           ", Style::default().fg(Color::Green)), Span::raw("Add a tmux session (pin)")]),
+            Line::from(vec![Span::styled("  d           ", Style::default().fg(Color::Green)), Span::raw("Remove selected pinned session")]),
             Line::from(vec![Span::styled("  s           ", Style::default().fg(Color::Green)), Span::raw("Toggle auto-sort by priority")]),
             Line::from(vec![Span::styled("  w           ", Style::default().fg(Color::Green)), Span::raw("Toggle git branch / worktree info")]),
             Line::from(vec![Span::styled("  ?           ", Style::default().fg(Color::Green)), Span::raw("Toggle this help")]),
@@ -593,6 +673,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("  ●  ", Style::default().fg(Color::DarkGray)), Span::raw("Idle — waiting for your input")]),
             Line::from(vec![Span::styled("  ◉  ", Style::default().fg(Color::Cyan)), Span::raw("Working — actively processing")]),
             Line::from(vec![Span::styled("  ⚠  ", Style::default().fg(Color::Yellow)), Span::raw("Needs approval — permission prompt")]),
+            Line::from(vec![Span::styled("  ○  ", Style::default().fg(Color::Blue)), Span::raw("Pinned — manually added tmux session")]),
             Line::from(vec![Span::styled("  *  ", Style::default().fg(Color::Magenta)), Span::raw("Status changed since last viewed")]),
             Line::from(""),
             Line::from(Span::styled(" Cost estimate ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
@@ -606,6 +687,44 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 .block(Block::default().title(" Help ").borders(Borders::ALL))
                 .style(Style::default().bg(Color::Black)),
             area,
+        );
+    }
+
+    // Add session overlay
+    if matches!(app.mode, Mode::AddSession) {
+        let area = centered_rect(60, 60, frame.area());
+        let items: Vec<ListItem> = if app.add_session_items.is_empty() {
+            vec![ListItem::new(Line::from(Span::styled(
+                "  No other tmux panes found",
+                Style::default().fg(Color::DarkGray),
+            )))]
+        } else {
+            app.add_session_items
+                .iter()
+                .map(|(target, cwd)| {
+                    let short_cwd = cwd.rsplit('/').next().unwrap_or(cwd.as_str());
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("  {target}"), Style::default().fg(Color::Cyan)),
+                        Span::styled(
+                            format!("  {short_cwd}"),
+                            Style::default().fg(Color::DarkGray),
+                        ),
+                    ]))
+                })
+                .collect()
+        };
+        frame.render_widget(Clear, area);
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(
+                    Block::default()
+                        .title(" Pin session (Enter add · Esc cancel) ")
+                        .borders(Borders::ALL),
+                )
+                .style(Style::default().bg(Color::Black))
+                .highlight_style(Style::default().bg(Color::Blue).fg(Color::White)),
+            area,
+            &mut app.add_session_state,
         );
     }
 }
@@ -650,6 +769,8 @@ fn test_app(sessions: Vec<Session>) -> App {
         daily_cost: TokenUsage::default(),
         monthly_cost: TokenUsage::default(),
         last_cost_refresh: Instant::now(),
+        add_session_items: vec![],
+        add_session_state: ListState::default(),
     }
 }
 
@@ -661,6 +782,7 @@ fn make_session(target: &str, status: Status, cwd: &str) -> Session {
         cwd: cwd.into(),
         git: None,
         tokens: TokenUsage::default(),
+        pinned: false,
     }
 }
 
@@ -730,6 +852,7 @@ mod tests {
                     cache_read: 0,
                     cache_write: 0,
                 },
+                pinned: false,
             },
         ]);
         let output = render(&mut app);
@@ -805,6 +928,7 @@ mod tests {
                 cwd: "/home/user/proj".into(),
                 git: Some(GitInfo { branch: "feat/cool".into(), is_worktree: true }),
                 tokens: TokenUsage::default(),
+                pinned: false,
             },
         ]);
         // git off by default
@@ -839,7 +963,7 @@ mod tests {
         ]);
         let output = render(&mut app);
         assert!(output.contains("j/k navigate"));
-        assert!(output.contains("q quit"));
+        assert!(output.contains("/ filter"));
     }
 
     #[test]

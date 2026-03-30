@@ -78,6 +78,7 @@ pub struct Session {
     pub cwd: String,
     pub git: Option<GitInfo>,
     pub tokens: TokenUsage,
+    pub pinned: bool,
 }
 
 impl Session {
@@ -337,6 +338,52 @@ fn is_claude_pane(line: &str) -> bool {
             && command.len() <= 10
 }
 
+fn pinned_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    std::path::PathBuf::from(home).join(".config/claude-manager/pinned")
+}
+
+pub fn load_pinned() -> Vec<String> {
+    match fs::read_to_string(pinned_path()) {
+        Ok(content) => content
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
+pub fn save_pinned(targets: &[String]) {
+    let path = pinned_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(path, targets.join("\n"));
+}
+
+pub fn list_all_panes() -> Result<Vec<(String, String)>> {
+    let output = Command::new("tmux")
+        .args([
+            "list-panes",
+            "-a",
+            "-F",
+            "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_path}",
+        ])
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let panes = stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '\t');
+            let target = parts.next()?.to_string();
+            let cwd = parts.next().unwrap_or("").to_string();
+            Some((target, cwd))
+        })
+        .collect();
+    Ok(panes)
+}
+
 pub fn detect_sessions() -> Result<Vec<Session>> {
     let output = Command::new("tmux")
         .args([
@@ -348,7 +395,7 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
         .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let sessions: Vec<Session> = stdout
+    let mut sessions: Vec<Session> = stdout
         .lines()
         .filter(|line| is_claude_pane(line))
         .filter_map(|line| {
@@ -362,9 +409,29 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             let status = detect_status(&pane_content);
             let git = detect_git_info(&cwd);
             let tokens = read_token_usage(&cwd);
-            Some(Session { target, status, cwd, git, tokens })
+            Some(Session { target, status, cwd, git, tokens, pinned: false })
         })
         .collect();
+
+    // Also include pinned non-Claude sessions
+    let claude_targets: std::collections::HashSet<String> =
+        sessions.iter().map(|s| s.target.clone()).collect();
+    let all_panes: std::collections::HashMap<String, String> =
+        list_all_panes().unwrap_or_default().into_iter().collect();
+    for target in load_pinned() {
+        if !claude_targets.contains(&target) {
+            let cwd = all_panes.get(&target).cloned().unwrap_or_default();
+            let git = detect_git_info(&cwd);
+            sessions.push(Session {
+                target,
+                status: Status::Idle,
+                cwd,
+                git,
+                tokens: TokenUsage::default(),
+                pinned: true,
+            });
+        }
+    }
 
     Ok(sessions)
 }
@@ -409,10 +476,6 @@ pub fn switch_to_pane(target: &str) -> Result<()> {
 pub fn notify(message: &str) -> Result<()> {
     Command::new("tmux")
         .args(["display-message", message])
-        .output()?;
-    // Also send a bell to trigger tmux activity alerts
-    Command::new("tmux")
-        .args(["run-shell", "printf '\\a'"])
         .output()?;
     Ok(())
 }
@@ -480,6 +543,7 @@ mod tests {
             cwd: "/home/user/code".into(),
             git: None,
             tokens: TokenUsage::default(),
+            pinned: false,
         };
         assert_eq!(s.label(), "my-project");
     }
@@ -492,6 +556,7 @@ mod tests {
             cwd: String::new(),
             git: None,
             tokens: TokenUsage::default(),
+            pinned: false,
         };
         assert_eq!(s.label(), "simple");
     }
@@ -504,6 +569,7 @@ mod tests {
             cwd: "/home/user/my-project".into(),
             git: None,
             tokens: TokenUsage::default(),
+            pinned: false,
         };
         assert_eq!(s.short_cwd(), "my-project");
     }
@@ -516,6 +582,7 @@ mod tests {
             cwd: "just-a-name".into(),
             git: None,
             tokens: TokenUsage::default(),
+            pinned: false,
         };
         assert_eq!(s.short_cwd(), "just-a-name");
     }
