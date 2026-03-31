@@ -23,6 +23,7 @@ use ansi_to_tui::IntoText as _;
 use tmux::{Session, Status, TokenUsage};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+const SLOW_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const COST_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 const PREVIEW_SCROLL_STEP: u16 = 10;
@@ -53,13 +54,14 @@ struct App {
     daily_cost: TokenUsage,
     monthly_cost: TokenUsage,
     last_cost_refresh: Instant,
+    last_slow_refresh: Instant,
     add_session_items: Vec<(String, String)>,
     add_session_state: ListState,
 }
 
 impl App {
     fn new() -> Result<Self> {
-        let sessions = tmux::detect_sessions().unwrap_or_default();
+        let sessions = tmux::detect_sessions(true).unwrap_or_default();
         let filtered: Vec<usize> = (0..sessions.len()).collect();
         let mut list_state = ListState::default();
         let origin = tmux::origin_pane_target();
@@ -85,6 +87,7 @@ impl App {
             daily_cost: TokenUsage::default(),
             monthly_cost: TokenUsage::default(),
             last_cost_refresh: Instant::now() - COST_REFRESH_INTERVAL,
+            last_slow_refresh: Instant::now(),
             add_session_items: vec![],
             add_session_state: ListState::default(),
         })
@@ -95,7 +98,23 @@ impl App {
             return;
         }
         let selected_target = self.selected_session().map(|s| s.target.clone());
-        self.sessions = tmux::detect_sessions().unwrap_or_default();
+        let need_slow = self.last_slow_refresh.elapsed() >= SLOW_REFRESH_INTERVAL;
+        let mut new_sessions = tmux::detect_sessions(need_slow).unwrap_or_default();
+        if !need_slow {
+            // Carry forward cached git/token data from previous sessions
+            let prev: HashMap<String, &Session> = self.sessions.iter()
+                .map(|s| (s.target.clone(), s))
+                .collect();
+            for s in &mut new_sessions {
+                if let Some(old) = prev.get(&s.target) {
+                    s.git = old.git.clone();
+                    s.tokens = old.tokens.clone();
+                }
+            }
+        } else {
+            self.last_slow_refresh = Instant::now();
+        }
+        self.sessions = new_sessions;
         if self.auto_sort {
             self.sessions.sort_by(|a, b| a.status.cmp(&b.status));
         }
@@ -771,6 +790,7 @@ fn test_app(sessions: Vec<Session>) -> App {
         daily_cost: TokenUsage::default(),
         monthly_cost: TokenUsage::default(),
         last_cost_refresh: Instant::now(),
+        last_slow_refresh: Instant::now(),
         add_session_items: vec![],
         add_session_state: ListState::default(),
     }

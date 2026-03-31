@@ -402,7 +402,9 @@ pub fn origin_pane_target() -> Option<String> {
     if target.is_empty() { None } else { Some(target) }
 }
 
-pub fn detect_sessions() -> Result<Vec<Session>> {
+/// Detect all Claude sessions. When `full` is true, also fetch git info and
+/// token usage (expensive). When false, only refresh statuses (fast path).
+pub fn detect_sessions(full: bool) -> Result<Vec<Session>> {
     let output = Command::new("tmux")
         .args([
             "list-panes",
@@ -413,6 +415,20 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
         .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Build a map of all pane cwds from the same list-panes output (avoids a second call)
+    let all_panes: std::collections::HashMap<String, String> = stdout
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.splitn(4, '\t').collect();
+            if parts.len() >= 3 {
+                Some((parts[0].to_string(), parts[2].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let mut sessions: Vec<Session> = stdout
         .lines()
         .filter(|line| is_claude_pane(line))
@@ -425,8 +441,8 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
             let cwd = parts[2].to_string();
             let pane_content = capture_pane_plain(&target).unwrap_or_default();
             let status = detect_status(&pane_content);
-            let git = detect_git_info(&cwd);
-            let tokens = read_token_usage(&cwd);
+            let git = if full { detect_git_info(&cwd) } else { None };
+            let tokens = if full { read_token_usage(&cwd) } else { TokenUsage::default() };
             Some(Session { target, status, cwd, git, tokens, pinned: false })
         })
         .collect();
@@ -434,12 +450,10 @@ pub fn detect_sessions() -> Result<Vec<Session>> {
     // Also include pinned non-Claude sessions
     let claude_targets: std::collections::HashSet<String> =
         sessions.iter().map(|s| s.target.clone()).collect();
-    let all_panes: std::collections::HashMap<String, String> =
-        list_all_panes().unwrap_or_default().into_iter().collect();
     for target in load_pinned() {
         if !claude_targets.contains(&target) {
             let cwd = all_panes.get(&target).cloned().unwrap_or_default();
-            let git = detect_git_info(&cwd);
+            let git = if full { detect_git_info(&cwd) } else { None };
             sessions.push(Session {
                 target,
                 status: Status::Idle,
