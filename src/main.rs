@@ -62,9 +62,11 @@ impl App {
         let sessions = tmux::detect_sessions().unwrap_or_default();
         let filtered: Vec<usize> = (0..sessions.len()).collect();
         let mut list_state = ListState::default();
-        if !filtered.is_empty() {
-            list_state.select(Some(0));
-        }
+        let origin = tmux::origin_pane_target();
+        let initial_index = origin
+            .and_then(|t| filtered.iter().position(|&i| sessions[i].target == t))
+            .or(if filtered.is_empty() { None } else { Some(0) });
+        list_state.select(initial_index);
         Ok(Self {
             sessions,
             filtered,

@@ -384,6 +384,24 @@ pub fn list_all_panes() -> Result<Vec<(String, String)>> {
     Ok(panes)
 }
 
+/// Resolve the tmux pane that launched the manager (via $TMUX_PANE)
+/// into a `session:window.pane` target string.
+pub fn origin_pane_target() -> Option<String> {
+    let pane_id = std::env::var("TMUX_PANE").ok()?;
+    let output = Command::new("tmux")
+        .args([
+            "display-message",
+            "-t",
+            &pane_id,
+            "-p",
+            "#{session_name}:#{window_index}.#{pane_index}",
+        ])
+        .output()
+        .ok()?;
+    let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if target.is_empty() { None } else { Some(target) }
+}
+
 pub fn detect_sessions() -> Result<Vec<Session>> {
     let output = Command::new("tmux")
         .args([
