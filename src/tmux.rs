@@ -193,10 +193,11 @@ pub fn read_period_usage() -> (TokenUsage, TokenUsage) {
     let secs_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs();
     let secs_in_day = secs_since_epoch % 86400;
     let today_start = now - std::time::Duration::from_secs(secs_in_day);
-    let month_start = now - std::time::Duration::from_secs(30 * 86400);
-
     let today_str = timestamp_date_str(today_start);
-    let month_str = timestamp_date_str(month_start);
+    // First day of the current month (e.g. "2026-04-01")
+    let month_str = format!("{}-01", &today_str[..7]);
+    let day_of_month: u64 = today_str[8..10].parse().unwrap_or(1);
+    let month_start = today_start - std::time::Duration::from_secs((day_of_month - 1) * 86400);
 
     let mut daily = TokenUsage::default();
     let mut monthly = TokenUsage::default();
