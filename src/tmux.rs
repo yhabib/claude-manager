@@ -87,10 +87,7 @@ impl Session {
     }
 
     pub fn short_cwd(&self) -> &str {
-        self.cwd
-            .rsplit('/')
-            .next()
-            .unwrap_or(&self.cwd)
+        self.cwd.rsplit('/').next().unwrap_or(&self.cwd)
     }
 }
 
@@ -118,7 +115,10 @@ pub fn detect_git_info(cwd: &str) -> Option<GitInfo> {
         })
         .unwrap_or(false);
 
-    Some(GitInfo { branch, is_worktree })
+    Some(GitInfo {
+        branch,
+        is_worktree,
+    })
 }
 
 pub fn detect_status(pane_content: &str) -> Status {
@@ -163,7 +163,10 @@ pub fn detect_status(pane_content: &str) -> Status {
 pub fn read_token_usage(cwd: &str) -> TokenUsage {
     let home = std::env::var("HOME").unwrap_or_default();
     // Convert cwd to Claude's project dir format: /Users/foo.bar/baz -> -Users-foo-bar-baz
-    let project_dir: String = cwd.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
+    let project_dir: String = cwd
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect();
     let dir = format!("{home}/.claude/projects/{project_dir}");
 
     // Find the most recently modified .jsonl file
@@ -190,7 +193,10 @@ pub fn read_period_usage() -> (TokenUsage, TokenUsage) {
     let projects_dir = format!("{home}/.claude/projects");
 
     let now = SystemTime::now();
-    let secs_since_epoch = now.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let secs_since_epoch = now
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let secs_in_day = secs_since_epoch % 86400;
     let today_start = now - std::time::Duration::from_secs(secs_in_day);
     let today_str = timestamp_date_str(today_start);
@@ -210,7 +216,9 @@ pub fn read_period_usage() -> (TokenUsage, TokenUsage) {
         if !project.file_type().is_ok_and(|t| t.is_dir()) {
             continue;
         }
-        let Ok(files) = fs::read_dir(project.path()) else { continue };
+        let Ok(files) = fs::read_dir(project.path()) else {
+            continue;
+        };
         for entry in files.filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.extension().is_none_or(|ext| ext != "jsonl") {
@@ -231,22 +239,47 @@ pub fn read_period_usage() -> (TokenUsage, TokenUsage) {
 
 /// Format a SystemTime as "YYYY-MM-DD" for string comparison with ISO timestamps.
 fn timestamp_date_str(time: SystemTime) -> String {
-    let secs = time.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let secs = time
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     // Simple date calculation from epoch seconds
     let days = secs / 86400;
     let mut y = 1970i64;
     let mut remaining = days as i64;
     loop {
-        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
-        if remaining < days_in_year { break; }
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            366
+        } else {
+            365
+        };
+        if remaining < days_in_year {
+            break;
+        }
         remaining -= days_in_year;
         y += 1;
     }
     let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
-    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 0;
     for (i, &d) in month_days.iter().enumerate() {
-        if remaining < d as i64 { m = i + 1; break; }
+        if remaining < d as i64 {
+            m = i + 1;
+            break;
+        }
         remaining -= d as i64;
     }
     format!("{y:04}-{m:02}-{:02}", remaining + 1)
@@ -259,7 +292,9 @@ fn read_usage_by_period(
     daily: &mut TokenUsage,
     monthly: &mut TokenUsage,
 ) {
-    let Ok(file) = fs::File::open(path) else { return };
+    let Ok(file) = fs::File::open(path) else {
+        return;
+    };
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
@@ -267,22 +302,34 @@ fn read_usage_by_period(
         if !line.contains("\"usage\"") {
             continue;
         }
-        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
         if val.get("type").and_then(|t| t.as_str()) != Some("assistant") {
             continue;
         }
-        let Some(ts) = val.get("timestamp").and_then(|t| t.as_str()) else { continue };
+        let Some(ts) = val.get("timestamp").and_then(|t| t.as_str()) else {
+            continue;
+        };
 
         // Compare date portion of ISO timestamp (e.g. "2026-03-22T...")
         if ts < month_str {
             continue;
         }
 
-        let Some(u) = val.pointer("/message/usage") else { continue };
+        let Some(u) = val.pointer("/message/usage") else {
+            continue;
+        };
         let input = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let cache_read = u.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let cache_write = u.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let cache_read = u
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let cache_write = u
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
 
         monthly.input += input;
         monthly.output += output;
@@ -310,15 +357,25 @@ fn read_usage_from_file(path: &std::path::Path) -> TokenUsage {
         if !line.contains("\"usage\"") {
             continue;
         }
-        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
         if val.get("type").and_then(|t| t.as_str()) != Some("assistant") {
             continue;
         }
-        let Some(u) = val.pointer("/message/usage") else { continue };
+        let Some(u) = val.pointer("/message/usage") else {
+            continue;
+        };
         usage.input += u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         usage.output += u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        usage.cache_read += u.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        usage.cache_write += u.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        usage.cache_read += u
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        usage.cache_write += u
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
     }
 
     usage
@@ -400,7 +457,11 @@ pub fn origin_pane_target() -> Option<String> {
         .output()
         .ok()?;
     let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if target.is_empty() { None } else { Some(target) }
+    if target.is_empty() {
+        None
+    } else {
+        Some(target)
+    }
 }
 
 /// Detect all Claude sessions. When `full` is true, also fetch git info and
@@ -443,8 +504,19 @@ pub fn detect_sessions(full: bool) -> Result<Vec<Session>> {
             let pane_content = capture_pane_plain(&target).unwrap_or_default();
             let status = detect_status(&pane_content);
             let git = if full { detect_git_info(&cwd) } else { None };
-            let tokens = if full { read_token_usage(&cwd) } else { TokenUsage::default() };
-            Some(Session { target, status, cwd, git, tokens, pinned: false })
+            let tokens = if full {
+                read_token_usage(&cwd)
+            } else {
+                TokenUsage::default()
+            };
+            Some(Session {
+                target,
+                status,
+                cwd,
+                git,
+                tokens,
+                pinned: false,
+            })
         })
         .collect();
 
@@ -528,7 +600,17 @@ pub fn send_keys(target: &str, keys: &[&str]) -> Result<()> {
 /// Open lazygit in a tmux popup targeting the given working directory.
 pub fn open_lazygit(cwd: &str) -> Result<()> {
     Command::new("tmux")
-        .args(["display-popup", "-d", cwd, "-w", "90%", "-h", "90%", "-E", "lazygit"])
+        .args([
+            "display-popup",
+            "-d",
+            cwd,
+            "-w",
+            "90%",
+            "-h",
+            "90%",
+            "-E",
+            "lazygit",
+        ])
         .output()?;
     Ok(())
 }
@@ -543,6 +625,33 @@ pub fn select_option(target: &str, option: u8) -> Result<()> {
     }
     std::thread::sleep(std::time::Duration::from_millis(50));
     send_keys(target, &["Enter"])?;
+    Ok(())
+}
+
+/// Return the name of the tmux session this process is running in, if any.
+pub fn current_session() -> Option<String> {
+    let output = Command::new("tmux")
+        .args(["display-message", "-p", "#S"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if name.is_empty() {
+            None
+        } else {
+            Some(name)
+        }
+    } else {
+        None
+    }
+}
+
+/// Kill a tmux session by target (e.g. "session:window.pane").
+pub fn kill_session(target: &str) -> Result<()> {
+    let session = target.split(':').next().unwrap_or(target);
+    Command::new("tmux")
+        .args(["kill-session", "-t", session])
+        .output()?;
     Ok(())
 }
 
@@ -563,7 +672,10 @@ mod tests {
     fn status_display() {
         assert_eq!(Status::Idle.to_string(), "idle");
         assert_eq!(Status::WaitingForApproval.to_string(), "needs approval");
-        assert_eq!(Status::Working("Reasoning…".into()).to_string(), "Reasoning…");
+        assert_eq!(
+            Status::Working("Reasoning…".into()).to_string(),
+            "Reasoning…"
+        );
     }
 
     // --- Session helpers ---
@@ -635,7 +747,8 @@ mod tests {
 
     #[test]
     fn detect_status_waiting_for_approval_yes() {
-        let content = "Do you want to proceed?\n\n  > 1. Yes\n    2. Yes, and don't ask again\n    3. No\n";
+        let content =
+            "Do you want to proceed?\n\n  > 1. Yes\n    2. Yes, and don't ask again\n    3. No\n";
         assert_eq!(detect_status(content), Status::WaitingForApproval);
     }
 
@@ -654,7 +767,9 @@ mod tests {
     #[test]
     fn detect_status_working_spinner_with_tokens() {
         let content = "Output\n✶ Canoodling… (46s · ↓ 114 tokens)\n";
-        assert!(matches!(detect_status(content), Status::Working(t) if t.starts_with("Canoodling")));
+        assert!(
+            matches!(detect_status(content), Status::Working(t) if t.starts_with("Canoodling"))
+        );
     }
 
     #[test]
