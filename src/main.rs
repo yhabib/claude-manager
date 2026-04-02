@@ -11,11 +11,11 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{
+    layout::Rect,
     layout::{Constraint, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    layout::Rect,
     DefaultTerminal, Frame,
 };
 
@@ -34,6 +34,7 @@ enum Mode {
     Prompt,
     Help,
     AddSession,
+    Confirm(String),
 }
 
 struct App {
@@ -102,7 +103,9 @@ impl App {
         let mut new_sessions = tmux::detect_sessions(need_slow).unwrap_or_default();
         if !need_slow {
             // Carry forward cached git/token data from previous sessions
-            let prev: HashMap<String, &Session> = self.sessions.iter()
+            let prev: HashMap<String, &Session> = self
+                .sessions
+                .iter()
                 .map(|s| (s.target.clone(), s))
                 .collect();
             for s in &mut new_sessions {
@@ -125,14 +128,14 @@ impl App {
                 if *prev != session.status {
                     self.changed.insert(session.target.clone(), true);
                     if session.status == Status::WaitingForApproval {
-                        let _ = tmux::notify(&format!(
-                            "{} needs approval", session.label()
-                        ));
+                        let _ = tmux::notify(&format!("{} needs approval", session.label()));
                     }
                 }
             }
         }
-        self.prev_statuses = self.sessions.iter()
+        self.prev_statuses = self
+            .sessions
+            .iter()
             .map(|s| (s.target.clone(), s.status.clone()))
             .collect();
 
@@ -148,8 +151,16 @@ impl App {
 
         // Preserve selection by target, or clamp to bounds
         let new_index = selected_target
-            .and_then(|t| self.filtered.iter().position(|&i| self.sessions[i].target == t))
-            .or(if self.filtered.is_empty() { None } else { Some(0) });
+            .and_then(|t| {
+                self.filtered
+                    .iter()
+                    .position(|&i| self.sessions[i].target == t)
+            })
+            .or(if self.filtered.is_empty() {
+                None
+            } else {
+                Some(0)
+            });
         self.list_state.select(new_index);
         self.refresh_preview();
         self.last_refresh = Instant::now();
@@ -157,7 +168,10 @@ impl App {
 
     fn apply_filter(&mut self) {
         let query = self.filter_query.to_lowercase();
-        self.filtered = self.sessions.iter().enumerate()
+        self.filtered = self
+            .sessions
+            .iter()
+            .enumerate()
             .filter(|(_, s)| {
                 query.is_empty()
                     || s.label().to_lowercase().contains(&query)
@@ -186,7 +200,10 @@ impl App {
     fn scroll_preview_down(&mut self) {
         self.preview_pinned = true;
         let line_count = self.preview.lines().count() as u16;
-        self.preview_scroll = self.preview_scroll.saturating_add(PREVIEW_SCROLL_STEP).min(line_count.saturating_sub(1));
+        self.preview_scroll = self
+            .preview_scroll
+            .saturating_add(PREVIEW_SCROLL_STEP)
+            .min(line_count.saturating_sub(1));
     }
 
     fn scroll_preview_up(&mut self) {
@@ -195,7 +212,8 @@ impl App {
     }
 
     fn selected_session(&self) -> Option<&Session> {
-        self.list_state.selected()
+        self.list_state
+            .selected()
             .and_then(|i| self.filtered.get(i))
             .map(|&i| &self.sessions[i])
     }
@@ -353,9 +371,32 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
                         (KeyCode::Char('?'), _) => {
                             app.mode = Mode::Help;
                         }
+                        (KeyCode::Char('x'), false) => {
+                            if let Some(session) = app.selected_session() {
+                                let target = session.target.clone();
+                                let session_name = target.split(':').next().unwrap_or(&target);
+                                let is_self =
+                                    tmux::current_session().map_or(false, |s| s == session_name);
+                                if !is_self {
+                                    app.mode = Mode::Confirm(target);
+                                }
+                            }
+                        }
                         (KeyCode::Char('a'), false) => app.open_add_session(),
                         (KeyCode::Char('d'), false) => app.unpin_selected(),
                         _ => {}
+                    },
+                    Mode::Confirm(_) => match key.code {
+                        KeyCode::Char('y') => {
+                            if let Mode::Confirm(target) = &app.mode {
+                                let _ = tmux::kill_session(target);
+                            }
+                            app.mode = Mode::Normal;
+                            app.last_refresh = Instant::now() - REFRESH_INTERVAL;
+                        }
+                        _ => {
+                            app.mode = Mode::Normal;
+                        }
                     },
                     Mode::Help => match key.code {
                         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
@@ -448,16 +489,23 @@ fn run(mut terminal: DefaultTerminal) -> Result<()> {
 }
 
 fn ui(frame: &mut Frame, app: &mut App) {
-    let [header, body, help_bar] =
-        Layout::vertical([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
-            .areas(frame.area());
+    let [header, body, help_bar] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
 
-    let help_text = match app.mode {
-        Mode::Filter => "Type to filter · Enter confirm · Esc clear",
-        Mode::Prompt => "Type a prompt · Enter send · Esc cancel",
-        Mode::Help => "Press ? or Esc to close",
-        Mode::AddSession => "j/k navigate · Enter pin · Esc cancel",
-        Mode::Normal => "j/k navigate · J/K scroll · l jump · 1/2/3 approve · p prompt · g lazygit · / filter · a add · d unpin · s sort · w git · ? help · q quit",
+    let help_text = match &app.mode {
+        Mode::Filter => "Type to filter · Enter confirm · Esc clear".into(),
+        Mode::Prompt => "Type a prompt · Enter send · Esc cancel".into(),
+        Mode::Help => "Press ? or Esc to close".into(),
+        Mode::AddSession => "j/k navigate · Enter pin · Esc cancel".into(),
+        Mode::Confirm(target) => {
+            let label = target.split(':').next().unwrap_or(target);
+            format!("Kill session {label}? y to confirm · any other key to cancel")
+        }
+        Mode::Normal => "j/k navigate · J/K scroll · l jump · x kill · 1/2/3 approve · p prompt · g lazygit · / filter · a add · d unpin · s sort · w git · ? help · q quit".into(),
     };
     frame.render_widget(
         Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray)),
@@ -465,37 +513,64 @@ fn ui(frame: &mut Frame, app: &mut App) {
     );
 
     // Session summary counts
-    let approval_count = app.sessions.iter().filter(|s| s.status == Status::WaitingForApproval).count();
-    let working_count = app.sessions.iter().filter(|s| matches!(s.status, Status::Working(_))).count();
-    let idle_count = app.sessions.iter().filter(|s| s.status == Status::Idle).count();
+    let approval_count = app
+        .sessions
+        .iter()
+        .filter(|s| s.status == Status::WaitingForApproval)
+        .count();
+    let working_count = app
+        .sessions
+        .iter()
+        .filter(|s| matches!(s.status, Status::Working(_)))
+        .count();
+    let idle_count = app
+        .sessions
+        .iter()
+        .filter(|s| s.status == Status::Idle)
+        .count();
 
-    let mut title_spans = vec![
-        Span::styled(
-            format!(" {} sessions", app.sessions.len()),
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        ),
-    ];
+    let mut title_spans = vec![Span::styled(
+        format!(" {} sessions", app.sessions.len()),
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )];
     if !app.sessions.is_empty() {
         title_spans.push(Span::styled("  ", Style::default()));
         if approval_count > 0 {
-            title_spans.push(Span::styled(format!("{approval_count} ⚠"), Style::default().fg(Color::Yellow)));
+            title_spans.push(Span::styled(
+                format!("{approval_count} ⚠"),
+                Style::default().fg(Color::Yellow),
+            ));
             title_spans.push(Span::styled(" · ", Style::default().fg(Color::DarkGray)));
         }
         if working_count > 0 {
-            title_spans.push(Span::styled(format!("{working_count} ◉"), Style::default().fg(Color::Cyan)));
+            title_spans.push(Span::styled(
+                format!("{working_count} ◉"),
+                Style::default().fg(Color::Cyan),
+            ));
             title_spans.push(Span::styled(" · ", Style::default().fg(Color::DarkGray)));
         }
-        title_spans.push(Span::styled(format!("{idle_count} ●"), Style::default().fg(Color::DarkGray)));
+        title_spans.push(Span::styled(
+            format!("{idle_count} ●"),
+            Style::default().fg(Color::DarkGray),
+        ));
     }
 
     // Active toggles
     let mut toggles = Vec::new();
-    if app.auto_sort { toggles.push("sort"); }
-    if app.show_git { toggles.push("git"); }
+    if app.auto_sort {
+        toggles.push("sort");
+    }
+    if app.show_git {
+        toggles.push("git");
+    }
     if !toggles.is_empty() {
         title_spans.push(Span::styled("  ", Style::default()));
         for (i, t) in toggles.iter().enumerate() {
-            if i > 0 { title_spans.push(Span::styled(" ", Style::default())); }
+            if i > 0 {
+                title_spans.push(Span::styled(" ", Style::default()));
+            }
             title_spans.push(Span::styled(
                 format!("[{t}]"),
                 Style::default().fg(Color::Magenta),
@@ -525,8 +600,8 @@ fn ui(frame: &mut Frame, app: &mut App) {
         ));
     }
 
-    let title = Paragraph::new(Line::from(title_spans))
-        .block(Block::default().borders(Borders::ALL));
+    let title =
+        Paragraph::new(Line::from(title_spans)).block(Block::default().borders(Borders::ALL));
     frame.render_widget(title, header);
 
     if app.sessions.is_empty() {
@@ -541,19 +616,18 @@ fn ui(frame: &mut Frame, app: &mut App) {
         let [body, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(body);
         let filter_text = format!("/{}", app.filter_query);
-        let filter_bar = Paragraph::new(filter_text)
-            .style(Style::default().fg(Color::Yellow));
+        let filter_bar = Paragraph::new(filter_text).style(Style::default().fg(Color::Yellow));
         frame.render_widget(filter_bar, filter_area);
         body
     } else if matches!(app.mode, Mode::Prompt) {
         let [body, prompt_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(body);
-        let target_name = app.selected_session()
+        let target_name = app
+            .selected_session()
             .map(|s| s.short_cwd().to_string())
             .unwrap_or_default();
         let prompt_text = format!("prompt ({target_name})> {}", app.prompt_input);
-        let prompt_bar = Paragraph::new(prompt_text)
-            .style(Style::default().fg(Color::Green));
+        let prompt_bar = Paragraph::new(prompt_text).style(Style::default().fg(Color::Green));
         frame.render_widget(prompt_bar, prompt_area);
         body
     } else {
@@ -561,8 +635,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     };
 
     let [list_area, preview_area] =
-        Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
-            .areas(body);
+        Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)]).areas(body);
 
     let mut items: Vec<ListItem> = Vec::new();
     let mut last_group = String::new();
@@ -587,7 +660,9 @@ fn ui(frame: &mut Frame, app: &mut App) {
         if show_group {
             lines.push(Line::from(Span::styled(
                 format!("┌ {group}"),
-                Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
             )));
         }
         let mut spans = vec![
@@ -595,10 +670,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
                 format!("{indicator} "),
                 Style::default().fg(indicator_color),
             ),
-            Span::styled(
-                s.short_cwd().to_string(),
-                Style::default().fg(Color::White),
-            ),
+            Span::styled(s.short_cwd().to_string(), Style::default().fg(Color::White)),
             Span::styled(
                 format!("  {}", s.status),
                 Style::default().fg(indicator_color),
@@ -607,7 +679,9 @@ fn ui(frame: &mut Frame, app: &mut App) {
         if changed {
             spans.push(Span::styled(
                 " *",
-                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
             ));
         }
         lines.push(Line::from(spans));
@@ -656,11 +730,7 @@ fn ui(frame: &mut Frame, app: &mut App) {
     }
 
     let preview = Paragraph::new(preview_text)
-        .block(
-            Block::default()
-                .title(preview_title)
-                .borders(Borders::ALL),
-        )
+        .block(Block::default().title(preview_title).borders(Borders::ALL))
         .scroll((app.preview_scroll, 0));
 
     frame.render_widget(preview, preview_area);
@@ -669,35 +739,120 @@ fn ui(frame: &mut Frame, app: &mut App) {
     if matches!(app.mode, Mode::Help) {
         let area = centered_rect(60, 70, frame.area());
         let help_content = vec![
-            Line::from(Span::styled(" Keybindings ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                " Keybindings ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
-            Line::from(vec![Span::styled("  j / ↓       ", Style::default().fg(Color::Green)), Span::raw("Move down in the session list")]),
-            Line::from(vec![Span::styled("  k / ↑       ", Style::default().fg(Color::Green)), Span::raw("Move up in the session list")]),
-            Line::from(vec![Span::styled("  J (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview down")]),
-            Line::from(vec![Span::styled("  K (shift)   ", Style::default().fg(Color::Green)), Span::raw("Scroll preview up")]),
-            Line::from(vec![Span::styled("  l / Enter   ", Style::default().fg(Color::Green)), Span::raw("Jump to the selected session")]),
-            Line::from(vec![Span::styled("  1           ", Style::default().fg(Color::Green)), Span::raw("Select option 1 (Yes)")]),
-            Line::from(vec![Span::styled("  2           ", Style::default().fg(Color::Green)), Span::raw("Select option 2 (Yes, don't ask again)")]),
-            Line::from(vec![Span::styled("  3           ", Style::default().fg(Color::Green)), Span::raw("Select option 3 (No)")]),
-            Line::from(vec![Span::styled("  p           ", Style::default().fg(Color::Green)), Span::raw("Send a prompt to selected session")]),
-            Line::from(vec![Span::styled("  g           ", Style::default().fg(Color::Green)), Span::raw("Open lazygit for selected session")]),
-            Line::from(vec![Span::styled("  /           ", Style::default().fg(Color::Green)), Span::raw("Filter sessions")]),
-            Line::from(vec![Span::styled("  a           ", Style::default().fg(Color::Green)), Span::raw("Add a tmux session (pin)")]),
-            Line::from(vec![Span::styled("  d           ", Style::default().fg(Color::Green)), Span::raw("Remove selected pinned session")]),
-            Line::from(vec![Span::styled("  s           ", Style::default().fg(Color::Green)), Span::raw("Toggle auto-sort by priority")]),
-            Line::from(vec![Span::styled("  w           ", Style::default().fg(Color::Green)), Span::raw("Toggle git branch / worktree info")]),
-            Line::from(vec![Span::styled("  ?           ", Style::default().fg(Color::Green)), Span::raw("Toggle this help")]),
-            Line::from(vec![Span::styled("  q           ", Style::default().fg(Color::Green)), Span::raw("Quit")]),
+            Line::from(vec![
+                Span::styled("  j / ↓       ", Style::default().fg(Color::Green)),
+                Span::raw("Move down in the session list"),
+            ]),
+            Line::from(vec![
+                Span::styled("  k / ↑       ", Style::default().fg(Color::Green)),
+                Span::raw("Move up in the session list"),
+            ]),
+            Line::from(vec![
+                Span::styled("  J (shift)   ", Style::default().fg(Color::Green)),
+                Span::raw("Scroll preview down"),
+            ]),
+            Line::from(vec![
+                Span::styled("  K (shift)   ", Style::default().fg(Color::Green)),
+                Span::raw("Scroll preview up"),
+            ]),
+            Line::from(vec![
+                Span::styled("  l / Enter   ", Style::default().fg(Color::Green)),
+                Span::raw("Jump to the selected session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  x           ", Style::default().fg(Color::Green)),
+                Span::raw("Kill the selected session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  1           ", Style::default().fg(Color::Green)),
+                Span::raw("Select option 1 (Yes)"),
+            ]),
+            Line::from(vec![
+                Span::styled("  2           ", Style::default().fg(Color::Green)),
+                Span::raw("Select option 2 (Yes, don't ask again)"),
+            ]),
+            Line::from(vec![
+                Span::styled("  3           ", Style::default().fg(Color::Green)),
+                Span::raw("Select option 3 (No)"),
+            ]),
+            Line::from(vec![
+                Span::styled("  p           ", Style::default().fg(Color::Green)),
+                Span::raw("Send a prompt to selected session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  g           ", Style::default().fg(Color::Green)),
+                Span::raw("Open lazygit for selected session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  /           ", Style::default().fg(Color::Green)),
+                Span::raw("Filter sessions"),
+            ]),
+            Line::from(vec![
+                Span::styled("  a           ", Style::default().fg(Color::Green)),
+                Span::raw("Add a tmux session (pin)"),
+            ]),
+            Line::from(vec![
+                Span::styled("  d           ", Style::default().fg(Color::Green)),
+                Span::raw("Remove selected pinned session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  s           ", Style::default().fg(Color::Green)),
+                Span::raw("Toggle auto-sort by priority"),
+            ]),
+            Line::from(vec![
+                Span::styled("  w           ", Style::default().fg(Color::Green)),
+                Span::raw("Toggle git branch / worktree info"),
+            ]),
+            Line::from(vec![
+                Span::styled("  ?           ", Style::default().fg(Color::Green)),
+                Span::raw("Toggle this help"),
+            ]),
+            Line::from(vec![
+                Span::styled("  q           ", Style::default().fg(Color::Green)),
+                Span::raw("Quit"),
+            ]),
             Line::from(""),
-            Line::from(Span::styled(" Status indicators ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                " Status indicators ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
-            Line::from(vec![Span::styled("  ●  ", Style::default().fg(Color::DarkGray)), Span::raw("Idle — waiting for your input")]),
-            Line::from(vec![Span::styled("  ◉  ", Style::default().fg(Color::Cyan)), Span::raw("Working — actively processing")]),
-            Line::from(vec![Span::styled("  ⚠  ", Style::default().fg(Color::Yellow)), Span::raw("Needs approval — permission prompt")]),
-            Line::from(vec![Span::styled("  ○  ", Style::default().fg(Color::Blue)), Span::raw("Pinned — manually added tmux session")]),
-            Line::from(vec![Span::styled("  *  ", Style::default().fg(Color::Magenta)), Span::raw("Status changed since last viewed")]),
+            Line::from(vec![
+                Span::styled("  ●  ", Style::default().fg(Color::DarkGray)),
+                Span::raw("Idle — waiting for your input"),
+            ]),
+            Line::from(vec![
+                Span::styled("  ◉  ", Style::default().fg(Color::Cyan)),
+                Span::raw("Working — actively processing"),
+            ]),
+            Line::from(vec![
+                Span::styled("  ⚠  ", Style::default().fg(Color::Yellow)),
+                Span::raw("Needs approval — permission prompt"),
+            ]),
+            Line::from(vec![
+                Span::styled("  ○  ", Style::default().fg(Color::Blue)),
+                Span::raw("Pinned — manually added tmux session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  *  ", Style::default().fg(Color::Magenta)),
+                Span::raw("Status changed since last viewed"),
+            ]),
             Line::from(""),
-            Line::from(Span::styled(" Cost estimate ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                " Cost estimate ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             Line::from("  Based on Claude Opus 4.6 pricing."),
             Line::from("  Actual costs may differ by model."),
@@ -813,19 +968,21 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         Constraint::Percentage((100 - percent_y) / 2),
         Constraint::Percentage(percent_y),
         Constraint::Percentage((100 - percent_y) / 2),
-    ]).areas(area);
+    ])
+    .areas(area);
     let [_, horiz, _] = Layout::horizontal([
         Constraint::Percentage((100 - percent_x) / 2),
         Constraint::Percentage(percent_x),
         Constraint::Percentage((100 - percent_x) / 2),
-    ]).areas(vert);
+    ])
+    .areas(vert);
     horiz
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{backend::TestBackend, Terminal};
     use tmux::GitInfo;
 
     fn render(app: &mut App) -> String {
@@ -839,9 +996,11 @@ mod tests {
 
     #[test]
     fn header_shows_session_count() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Idle, "/home/user/proj"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Idle,
+            "/home/user/proj",
+        )]);
         let output = render(&mut app);
         assert!(output.contains("1 sessions"));
     }
@@ -862,39 +1021,33 @@ mod tests {
 
     #[test]
     fn header_shows_cost_when_tokens_present() {
-        let mut app = test_app(vec![
-            Session {
-                target: "a:0.0".into(),
-                status: Status::Idle,
-                cwd: "/a".into(),
-                git: None,
-                tokens: TokenUsage {
-                    input: 1_000_000,
-                    output: 100_000,
-                    cache_read: 0,
-                    cache_write: 0,
-                },
-                pinned: false,
+        let mut app = test_app(vec![Session {
+            target: "a:0.0".into(),
+            status: Status::Idle,
+            cwd: "/a".into(),
+            git: None,
+            tokens: TokenUsage {
+                input: 1_000_000,
+                output: 100_000,
+                cache_read: 0,
+                cache_write: 0,
             },
-        ]);
+            pinned: false,
+        }]);
         let output = render(&mut app);
         assert!(output.contains("session: $"));
     }
 
     #[test]
     fn header_no_cost_when_no_tokens() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         let output = render(&mut app);
         assert!(!output.contains("session: $"));
     }
 
     #[test]
     fn header_shows_toggle_indicators() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         app.show_git = true;
         app.auto_sort = true;
         let output = render(&mut app);
@@ -915,9 +1068,11 @@ mod tests {
 
     #[test]
     fn session_list_shows_cwd_and_status() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Idle, "/home/user/my-project"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Idle,
+            "/home/user/my-project",
+        )]);
         let output = render(&mut app);
         assert!(output.contains("my-project"));
         assert!(output.contains("idle"));
@@ -925,34 +1080,39 @@ mod tests {
 
     #[test]
     fn session_list_shows_working_status() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Working("Reasoning…".into()), "/home/user/proj"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Working("Reasoning…".into()),
+            "/home/user/proj",
+        )]);
         let output = render(&mut app);
         assert!(output.contains("Reasoning…"));
     }
 
     #[test]
     fn session_list_shows_group_header() {
-        let mut app = test_app(vec![
-            make_session("my-session:0.0", Status::Idle, "/home/user/proj"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "my-session:0.0",
+            Status::Idle,
+            "/home/user/proj",
+        )]);
         let output = render(&mut app);
         assert!(output.contains("┌ my-session"));
     }
 
     #[test]
     fn session_list_shows_git_info_when_toggled() {
-        let mut app = test_app(vec![
-            Session {
-                target: "proj:0.0".into(),
-                status: Status::Idle,
-                cwd: "/home/user/proj".into(),
-                git: Some(GitInfo { branch: "feat/cool".into(), is_worktree: true }),
-                tokens: TokenUsage::default(),
-                pinned: false,
-            },
-        ]);
+        let mut app = test_app(vec![Session {
+            target: "proj:0.0".into(),
+            status: Status::Idle,
+            cwd: "/home/user/proj".into(),
+            git: Some(GitInfo {
+                branch: "feat/cool".into(),
+                is_worktree: true,
+            }),
+            tokens: TokenUsage::default(),
+            pinned: false,
+        }]);
         // git off by default
         let output = render(&mut app);
         assert!(!output.contains("feat/cool"));
@@ -966,9 +1126,11 @@ mod tests {
 
     #[test]
     fn session_list_shows_changed_marker() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Idle, "/home/user/proj"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Idle,
+            "/home/user/proj",
+        )]);
         app.changed.insert("proj:0.0".into(), true);
         // Select a different session or none so changed isn't cleared
         app.list_state.select(None);
@@ -980,9 +1142,7 @@ mod tests {
 
     #[test]
     fn help_bar_normal_mode() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         let output = render(&mut app);
         assert!(output.contains("j/k navigate"));
         assert!(output.contains("/ filter"));
@@ -990,9 +1150,7 @@ mod tests {
 
     #[test]
     fn help_bar_filter_mode() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         app.mode = Mode::Filter;
         let output = render(&mut app);
         assert!(output.contains("Type to filter"));
@@ -1001,9 +1159,7 @@ mod tests {
 
     #[test]
     fn help_bar_prompt_mode() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         app.mode = Mode::Prompt;
         let output = render(&mut app);
         assert!(output.contains("Type a prompt"));
@@ -1012,9 +1168,7 @@ mod tests {
 
     #[test]
     fn help_bar_help_mode() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         app.mode = Mode::Help;
         let output = render(&mut app);
         assert!(output.contains("Esc to close"));
@@ -1024,9 +1178,7 @@ mod tests {
 
     #[test]
     fn filter_bar_shows_query() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         app.mode = Mode::Filter;
         app.filter_query = "proj".into();
         let output = render(&mut app);
@@ -1037,9 +1189,11 @@ mod tests {
 
     #[test]
     fn prompt_bar_shows_input() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/home/user/my-app"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "a:0.0",
+            Status::Idle,
+            "/home/user/my-app",
+        )]);
         app.mode = Mode::Prompt;
         app.prompt_input = "fix the bug".into();
         let output = render(&mut app);
@@ -1051,9 +1205,7 @@ mod tests {
 
     #[test]
     fn help_overlay_shows_keybindings() {
-        let mut app = test_app(vec![
-            make_session("a:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
         app.mode = Mode::Help;
         // Use a taller terminal so all content fits
         let backend = TestBackend::new(120, 50);
@@ -1129,9 +1281,11 @@ mod tests {
 
     #[test]
     fn apply_filter_case_insensitive() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Idle, "/home/user/MyProject"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Idle,
+            "/home/user/MyProject",
+        )]);
         app.filter_query = "myproject".into();
         app.apply_filter();
         assert_eq!(app.filtered.len(), 1);
@@ -1141,9 +1295,7 @@ mod tests {
 
     #[test]
     fn select_option_does_nothing_on_idle_session() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Idle, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session("proj:0.0", Status::Idle, "/a")]);
         let before = app.last_refresh;
         app.select_option(1);
         // last_refresh should NOT be reset since session is idle
@@ -1152,9 +1304,11 @@ mod tests {
 
     #[test]
     fn select_option_does_nothing_on_working_session() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Working("Thinking…".into()), "/a"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Working("Thinking…".into()),
+            "/a",
+        )]);
         let before = app.last_refresh;
         app.select_option(1);
         assert_eq!(app.last_refresh, before);
@@ -1162,9 +1316,11 @@ mod tests {
 
     #[test]
     fn select_option_does_nothing_when_no_selection() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::WaitingForApproval, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::WaitingForApproval,
+            "/a",
+        )]);
         app.list_state.select(None);
         let before = app.last_refresh;
         app.select_option(1);
@@ -1175,9 +1331,11 @@ mod tests {
 
     #[test]
     fn send_prompt_does_nothing_on_working_session() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::Working("Thinking…".into()), "/a"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::Working("Thinking…".into()),
+            "/a",
+        )]);
         let before = app.last_refresh;
         app.send_prompt("do something");
         assert_eq!(app.last_refresh, before);
@@ -1185,11 +1343,35 @@ mod tests {
 
     #[test]
     fn send_prompt_does_nothing_on_approval_session() {
-        let mut app = test_app(vec![
-            make_session("proj:0.0", Status::WaitingForApproval, "/a"),
-        ]);
+        let mut app = test_app(vec![make_session(
+            "proj:0.0",
+            Status::WaitingForApproval,
+            "/a",
+        )]);
         let before = app.last_refresh;
         app.send_prompt("do something");
         assert_eq!(app.last_refresh, before);
+    }
+
+    // --- Confirm mode ---
+
+    #[test]
+    fn help_bar_confirm_mode_shows_session_name() {
+        let mut app = test_app(vec![make_session("my-proj:0.0", Status::Idle, "/a")]);
+        app.mode = Mode::Confirm("my-proj:0.0".into());
+        let output = render(&mut app);
+        assert!(output.contains("Kill session my-proj?"));
+        assert!(output.contains("y to confirm"));
+    }
+
+    #[test]
+    fn help_overlay_shows_kill_keybinding() {
+        let mut app = test_app(vec![make_session("a:0.0", Status::Idle, "/a")]);
+        app.mode = Mode::Help;
+        let backend = TestBackend::new(120, 50);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| ui(frame, &mut app)).unwrap();
+        let output = buffer_to_string(terminal.backend().buffer());
+        assert!(output.contains("Kill the selected session"));
     }
 }
